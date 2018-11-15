@@ -5,7 +5,7 @@ from tensorflow.contrib import learn
 import numpy as np
 import re
 from sklearn.preprocessing import StandardScaler
-from itertools import product
+from sequence_helpers import get_alignments, get_vocab
 
 
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -25,7 +25,6 @@ from Bio import pairwise2
 
 # Network Parameters
 learning_rate = 0.01
-num_classes = 11
 num_features = 372
 word_length = 8
 vec_length = 4
@@ -34,62 +33,8 @@ nb_epoch = 16
 hidden_size = 100
 num_sequences = 10
 steps_per_epoch = 10
-num_classes = 2
+num_classes = 11
 num_filters = [16, 4]
-
-
-def replace_spaces(x):
-    return x.replace(' ', '')
-
-
-def get_alignments(x, y, seq_i, seq_j, batch_size):
-    '''
-    Aligns every pair of sequences to prepare input to CNN
-    :param x: a set of sequences
-    :param y: a set of labels
-    :return: a set of pairwise alignments of the sets in x (cartesian product) x
-    '''
-    a = pairwise2.align.localxx(x[seq_i], x[seq_j], one_alignment_only=True)[0]
-    align_x = np.array(list(a)[0:2])
-    #if np.array_equal(y[seq_i], y[seq_j]):
-    align_y = np.array([y[seq_i], y[seq_j]])
-    for i in range(seq_i + 1, seq_i + batch_size):
-        for j in range(seq_j + 1, seq_j + batch_size):
-            a = pairwise2.align.localxx(x[i], x[j], one_alignment_only=True)[0]
-            align_x = np.vstack((align_x, np.array(list(a)[0:2])))
-            #if np.array_equal(y[i], y[j]):
-            #    align_y = np.append(align_y, np.array([y[i]]))
-            #else:
-            align_y = np.append(align_y, np.array([y[i], y[j]]))
-    lens = [len(seq) for alignment in align_x for seq in alignment]
-    max_document_length = max(lens)
-    align_y = np.reshape(align_y, (-1, 2))
-    return align_x, align_y, max_document_length
-
-
-def get_vocab(chars):
-    vocab = {}
-    i = 0
-    words = product(chars, repeat=word_length)
-    word_list = []  # Create a empty list
-    for permutation in words:
-        word_list.append(''.join(permutation))  # Join alphabet together and append in namList
-    for word in word_list:
-        vocab[word] = i
-        i += 1
-    print('Vocab:', vocab)
-    return vocab
-
-
-def base_pairs_to_onehot(seq1, seq2, max_len):
-    vocab = get_vocab('atcgx')
-    index_arr = np.array([])
-    for i in range(0, max_len):
-        if i < len(seq1):
-            index_arr = np.append(index_arr, vocab[seq1[i]+seq2[i]])
-        else:
-            index_arr = np.append(index_arr, 6)
-    return index_arr
 
 
 def split_alignments(x, max_len):
@@ -99,41 +44,17 @@ def split_alignments(x, max_len):
         proc1 = ''
         proc2 = ''
         for j in range(max_len):
-            #print(i, j)
             if j < len(x[i][0]):
                 proc1 += (x[i][0][j]).replace('-', 'x')
                 proc2 += (x[i][1][j]).replace('-', 'x')
             else:
                 proc1 += 'x'
                 proc2 += 'x'
-                #re.findall('..', '1234567890')
-        #proc = [proc[i:i+word_length] for i in range(0, len(proc), word_length)]
         proc1 = ' '.join([proc1[i:i + word_length] for i in range(0, len(proc1))])
         proc2 = ' '.join([proc2[i:i + word_length] for i in range(0, len(proc2))])
-        #proc = re.findall('....', proc)
-        #print(proc)
         s1 = np.append(s1, proc1)
         s2 = np.append(s2, proc2)
     return s1, s2
-
-
-def zip_alignments(x, max_len):
-    x_proc = []
-    for i in range(len(x)):
-        proc = ''
-        for j in range(max_len):
-            #print(i, j)
-            if j < len(x[i][0]):
-                proc += (x[i][0][j]+x[i][1][j]).replace('-', 'x')
-            else:
-                proc += 'xx'
-                #re.findall('..', '1234567890')
-        #proc = [proc[i:i+word_length] for i in range(0, len(proc), word_length)]
-        proc = ' '.join([proc[i:i + word_length] for i in range(0, len(proc), word_length)])
-        #proc = re.findall('....', proc)
-        #print(proc)
-        x_proc = np.append(x_proc, proc)
-    return x_proc
 
 
 def generate_vec_batch(x_train, y_train, batch_size, tokenizer, SkipGram):
@@ -207,22 +128,6 @@ def alignments2vec(x, y, V, tokenizer):
     print(w2v.most_similar(positive=['a'*word_length]))
 
 
-
-def convert_base_pairs(x, y, max_document_length):
-    x_proc = []
-    y_proc = []
-    for i in range(len(x)):
-        proc = base_pairs_to_onehot(x[i][0], x[i][1], max_document_length)
-        if len(x_proc) == 0:
-            x_proc = proc
-            y_proc = y[i]
-        else:
-            x_proc = np.vstack((x_proc, proc))
-            y_proc = np.append(y_proc, y[i])
-    x_proc = np.reshape(x_proc, (y_proc.shape[0], -1))
-    return x_proc, y_proc, max_document_length
-
-
 def get_list_of_word2vec(x, w2v, max_length, n_samples):
     word_vec = []
     for alignment in x:
@@ -275,6 +180,13 @@ def generate_word2vec_batch(x, y):
             yield [word2vec1, word2vec2], align_y
 
 
+def class_to_onehot(y, num_classes):
+    onehot = np.zeros((len(y), num_classes))
+    for i in range(len(y)):
+        onehot[i][y[i]] = 1
+    return onehot
+
+
 def generate_batch(x, y, tokenizer):
     indices_i = np.arange(0, len(x) - 1 - batch_size)
     indices_j = np.arange(0, len(x) - 1 - batch_size)
@@ -303,24 +215,28 @@ def generate_batch(x, y, tokenizer):
         s2 = np.array(tokenizer.texts_to_sequences(a2))
         s1 = np.reshape(s1, (a1.shape[0], -1))
         s2 = np.reshape(s2, (a2.shape[0], -1))
-        #print(align_y)
-        #align_y = np_utils.to_categorical(align_y, num_classes=num_classes)
-        yield [s1, s2], align_y
+        y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
+        y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
+        align_y = 1*np.equal(y1, y2)
+        y1 = class_to_onehot(y1, num_classes)
+        y2 = class_to_onehot(y2, num_classes)
+        align_y = np_utils.to_categorical(align_y, num_classes=2)
+        yield [s1, s2], [y1, y2, align_y]
 
 
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=1)
-x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=2)
-x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me2.pos', pos=3)
-x3, y3 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me3.pos', pos=4)
-x4, y4 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k9ac.pos', pos=5)
-x5, y5 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k14ac.pos', pos=6)
-x6, y6 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k36me3.pos', pos=7)
-x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=8)
-x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=9)
-x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=10)
+x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0)
+x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1)
+x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me2.pos', pos=2)
+x3, y3 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me3.pos', pos=3)
+x4, y4 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k9ac.pos', pos=4)
+x5, y5 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k14ac.pos', pos=5)
+x6, y6 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k36me3.pos', pos=6)
+x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7)
+x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8)
+x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9)
 
 
 x_rt = np.concatenate((x0,x1,x2,x3,x4,x5,x6,x7,x8,x9))
@@ -329,7 +245,7 @@ y_rt = np.concatenate((y0,y1,y2,y3,y4,y5,y6,y7,y8,y9))
 
 #x_rt, y_rt = dhrt.load_data_and_labels('cami.pos', 'cami.neg')
 
-x_rt = np.array([replace_spaces(seq) for seq in x_rt])
+x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
 shuffled_rt = np.random.permutation(range(len(x_rt)))
 x_shuffle = x_rt[shuffled_rt]
@@ -345,20 +261,31 @@ x_train, x_valid, y_train, y_valid = train_test_split(x_shuffle,
 
 print('x shape:', x_train.shape)
 tokenizer = Tokenizer()
-tokenizer.fit_on_texts(get_vocab('atcgx'))
+tokenizer.fit_on_texts(get_vocab('atcgx', word_length))
 V = len(tokenizer.word_index) + 1
 print('Num Words:', V)
 
 #alignments2vec(x_train, y_train, V, tokenizer) #uncomment to train word2vec representation
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
-encoder_a = Input(batch_shape=(alignment_batch, None,))
+encoder_a = Input(shape=(None,))
 layer_a = Embedding(V, 128)(encoder_a)
-layer_a = Bidirectional(LSTM(hidden_size, stateful=True, return_sequences=True))(layer_a)
+layer_a = Bidirectional(LSTM(hidden_size, return_sequences=True))(layer_a)
+out_a = Conv1D(128, word_length)(layer_a)
+out_a = MaxPooling1D(5)(out_a)
+out_a = Dropout(0.5)(out_a)
+out_a = GlobalMaxPooling1D()(out_a)
+out_a = Dense(num_classes, activation='relu')(out_a)
 
-encoder_b = Input(batch_shape=(alignment_batch, None,))
+encoder_b = Input(shape=(None,))
 layer_b = Embedding(V, 128)(encoder_b)
-layer_b = Bidirectional(LSTM(hidden_size, stateful=True, return_sequences=True))(layer_b)
+layer_b = Bidirectional(LSTM(hidden_size, return_sequences=True))(layer_b)
+out_b = Conv1D(128, word_length)(layer_b)
+out_b = MaxPooling1D(5)(out_b)
+out_b = Dropout(0.5)(out_b)
+out_b = GlobalMaxPooling1D()(out_b)
+out_b = Dense(num_classes, activation='relu')(out_b)
+
 
 decoder = dot([layer_a, layer_b], axes=1, normalize=True)
 
@@ -370,7 +297,7 @@ drop = Dropout(0.5)(pool_1)
 global_pool = GlobalMaxPooling1D()(drop)
 dense_3 = Dense(512, activation='relu')(global_pool)
 output = Dense(2, activation='sigmoid')(dense_3)
-model = Model(inputs=[encoder_a, encoder_b], outputs=output)
+model = Model(inputs=[encoder_a, encoder_b], outputs=[out_a, out_b, output])
 
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
