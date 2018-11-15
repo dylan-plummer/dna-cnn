@@ -1,0 +1,6 @@
+/venv
+/__pycache__
+/.idea
+model_weights.h5
+my_model.h5
+model_architecture.json
