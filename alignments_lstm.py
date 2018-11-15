@@ -5,13 +5,14 @@ from tensorflow.contrib import learn
 import numpy as np
 import re
 from sklearn.preprocessing import StandardScaler
-from sequence_helpers import get_alignments, get_vocab
+from sequence_helpers import get_alignments, get_vocab, class_to_onehot
 
 
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential, Model
-from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, Concatenate, concatenate, GlobalMaxPooling1D, dot
+from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, GlobalMaxPooling1D, dot, multiply
+from keras.layers import RepeatVector
 from keras.optimizers import SGD, Adam
 from keras.layers.merge import Dot
 from keras.preprocessing.text import Tokenizer
@@ -24,7 +25,7 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.01
+learning_rate = 0.001
 num_features = 372
 word_length = 8
 vec_length = 4
@@ -68,13 +69,13 @@ def generate_vec_batch(x_train, y_train, batch_size, tokenizer, SkipGram):
         i = np.random.choice(indices_i, 1, replace=False)[0]
         j = np.random.choice(indices_j, 1, replace=False)[0]
         if (i + batch_size) < len(x_train) and (j + batch_size) < len(x_train):
-            align_x, align_y, max_length = (get_alignments(x_train, y_train, i, j, batch_size))
+            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, batch_size))
         elif (i + batch_size) >= len(x_train):
             print('End of training set, temp batch:', len(x_train[i:]))
-            align_x, align_y, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[i:])))
+            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[i:])))
         else:
             print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[j:])))
+            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[j:])))
         s1, s2 = split_alignments(align_x, max_length)
         for _, doc in enumerate(pad_sequences(tokenizer.texts_to_sequences(np.append(s1, s2)), maxlen=max_length, padding='post')):
             data, labels = skipgrams(sequence=doc, vocabulary_size=V, window_size=word_length, negative_samples=5.)
@@ -164,13 +165,13 @@ def generate_word2vec_batch(x, y):
         j = np.random.choice(indices_j, 1, replace=False)[0]
         w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
         if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, batch_size))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
         elif (i + batch_size) >= len(x):
             print('End of training set, temp batch:', len(x[i:]))
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, len(x[i:])))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
         else:
             print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, len(x[j:])))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
         #text = zip_alignments(align_x, max_length)
         s1, s2 = split_alignments(align_x, max_length)
         word2vec1 = get_list_of_word2vec(s1, w2v, max_length, align_y.shape[0])
@@ -178,13 +179,6 @@ def generate_word2vec_batch(x, y):
         align_y = np_utils.to_categorical(align_y)
         if align_y.shape[1] == 2:
             yield [word2vec1, word2vec2], align_y
-
-
-def class_to_onehot(y, num_classes):
-    onehot = np.zeros((len(y), num_classes))
-    for i in range(len(y)):
-        onehot[i][y[i]] = 1
-    return onehot
 
 
 def generate_batch(x, y, tokenizer):
@@ -198,13 +192,13 @@ def generate_batch(x, y, tokenizer):
         i = np.random.choice(indices_i, 1, replace=False)[0]
         j = np.random.choice(indices_j, 1, replace=False)[0]
         if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, batch_size))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
         elif (i + batch_size) >= len(x):
             print('End of training set, temp batch:', len(x[i:]))
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, len(x[i:])))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
         else:
             print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, max_length = (get_alignments(x, y, i, j, len(x[j:])))
+            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
         a1, a2 = split_alignments(align_x, max_length)
         s1, s2 = [], []
         for alignment in a1:
@@ -221,7 +215,10 @@ def generate_batch(x, y, tokenizer):
         y1 = class_to_onehot(y1, num_classes)
         y2 = class_to_onehot(y2, num_classes)
         align_y = np_utils.to_categorical(align_y, num_classes=2)
-        yield [s1, s2], [y1, y2, align_y]
+        print(s1)
+        print(s2)
+        print(score)
+        yield [s1, s2, score], [y1, y2, align_y]
 
 
 # load data
@@ -250,8 +247,8 @@ y_rt = np.array(list(y_rt))
 shuffled_rt = np.random.permutation(range(len(x_rt)))
 x_shuffle = x_rt[shuffled_rt]
 y_shuffle = y_rt[shuffled_rt]
-print('X:', x_shuffle)
-print('Y:', y_shuffle)
+#print('X:', x_shuffle)
+#print('Y:', y_shuffle)
 print(pairwise2.align.localxx(x_shuffle[0], x_shuffle[1], one_alignment_only=True))
 
 x_train, x_valid, y_train, y_valid = train_test_split(x_shuffle,
@@ -269,46 +266,52 @@ print('Num Words:', V)
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder_a = Input(shape=(None,))
-layer_a = Embedding(V, 128)(encoder_a)
-layer_a = Bidirectional(LSTM(hidden_size, return_sequences=True))(layer_a)
-out_a = Conv1D(128, word_length)(layer_a)
+layer_a = Embedding(V, 32)(encoder_a)
+layer_a = (LSTM(hidden_size, return_sequences=True))(layer_a)
+out_a = Conv1D(64, word_length)(layer_a)
 out_a = MaxPooling1D(5)(out_a)
 out_a = Dropout(0.5)(out_a)
 out_a = GlobalMaxPooling1D()(out_a)
-out_a = Dense(num_classes, activation='relu')(out_a)
+out_a = Dense(num_classes, activation='softmax')(out_a)
 
 encoder_b = Input(shape=(None,))
-layer_b = Embedding(V, 128)(encoder_b)
-layer_b = Bidirectional(LSTM(hidden_size, return_sequences=True))(layer_b)
-out_b = Conv1D(128, word_length)(layer_b)
+layer_b = Embedding(V, 32)(encoder_b)
+layer_b = (LSTM(hidden_size, return_sequences=True))(layer_b)
+out_b = Conv1D(64, word_length)(layer_b)
 out_b = MaxPooling1D(5)(out_b)
 out_b = Dropout(0.5)(out_b)
 out_b = GlobalMaxPooling1D()(out_b)
-out_b = Dense(num_classes, activation='relu')(out_b)
+out_b = Dense(num_classes, activation='softmax')(out_b)
 
+align_score = Input(shape=(None,))
+#score = RepeatVector(100)(align_score)
+#score_a = multiply([layer_a, align_score])
+#score_b = multiply([layer_b, align_score])
 
 decoder = dot([layer_a, layer_b], axes=1, normalize=True)
 
+score = dot([decoder, align_score], axes=-1)
+
+#decoder = multiply([decoder, align_score])
+
 #dense_1 = Dense(2048, activation='relu')(pool_2)
 #dense_2 = Dense(1024, activation='relu')(dense_1)
-conv_1 = Conv1D(128, word_length)(decoder)
-pool_1 = MaxPooling1D(5)(conv_1)
-drop = Dropout(0.5)(pool_1)
-global_pool = GlobalMaxPooling1D()(drop)
-dense_3 = Dense(512, activation='relu')(global_pool)
-output = Dense(2, activation='sigmoid')(dense_3)
-model = Model(inputs=[encoder_a, encoder_b], outputs=[out_a, out_b, output])
+#conv_1 = Conv1D(64, word_length)(score)
+#pool_1 = MaxPooling1D(5)(conv_1)
+#drop = Dropout(0.5)(pool_1)
+output = Dense(2, activation='softmax')(score)
+model = Model(inputs=[encoder_a, encoder_b, align_score], outputs=[out_a, out_b, output])
 
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
-model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
+model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['acc'])
 print('Training shapes:', x_train.shape, y_train.shape)
 print('Valid shapes:', x_valid.shape, y_valid.shape)
 print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=16,#len(x_train)//batch_size//steps_per_epoch,
+                              epochs=8,#len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
@@ -321,19 +324,27 @@ with open('model_architecture.json', 'w') as f:
 
 print(history.history.keys())
 # summarize history for accuracy
-plt.plot(history.history['acc'])
-plt.plot(history.history['val_acc'])
+plt.plot(history.history['dense_1_acc'])
+plt.plot(history.history['dense_2_acc'])
+plt.plot(history.history['dense_3_acc'])
+plt.plot(history.history['val_dense_1_acc'])
+plt.plot(history.history['val_dense_2_acc'])
+plt.plot(history.history['val_dense_3_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-plt.legend(['train', 'test'], loc='upper left')
+plt.legend(['seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
 plt.show()
 # summarize history for loss
-plt.plot(history.history['loss'])
-plt.plot(history.history['val_loss'])
+plt.plot(history.history['dense_1_loss'])
+plt.plot(history.history['dense_2_loss'])
+plt.plot(history.history['dense_3_loss'])
+plt.plot(history.history['val_dense_1_loss'])
+plt.plot(history.history['val_dense_2_loss'])
+plt.plot(history.history['val_dense_3_loss'])
 plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
-plt.legend(['train', 'test'], loc='upper left')
+plt.legend(['seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
 plt.show()
 

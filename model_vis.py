@@ -8,6 +8,7 @@ import os
 from keras_preprocessing.text import Tokenizer
 
 import data_helpers as dhrt
+from sequence_helpers import class_to_onehot
 from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
 
@@ -18,8 +19,8 @@ vec_length = 4
 # load data
 dir = os.getcwd() + '/histone_data/'
 #x_rt, y_rt = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1)
-x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=1)
-x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=2)
+x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0)
+x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8)
 
 x_rt = np.concatenate((x1, x2))
 y_rt = np.concatenate((y1, y2))
@@ -80,25 +81,19 @@ def alignment2vec(alignment, w2v):
     return vec
 
 
-def get_test_alignment(x, i, j, tokenizer):
-    w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
-    alignment = pairwise2.align.globalxx(x[i], x[j], one_alignment_only=True)[0]
+def get_test_alignment(x, seq_i, seq_j, tokenizer):
+   # w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
+    alignment = pairwise2.align.globalxx(x[seq_i], x[seq_j], one_alignment_only=True)[0]
     align_x = np.array(list(alignment)[0:2])
     s1 = align_x[0]
     s2 = align_x[1]
-    s1 = ' '.join([s1[i:i + word_length] for i in range(0, len(s1))]).replace('-','x')
-    s2 = ' '.join([s2[i:i + word_length] for i in range(0, len(s2))]).replace('-', 'x')
-    print(s1)
-    print(s2)
-    s1 = np.tile(s1, 10)
-    s2 = np.tile(s2, 10)
+    s1 = [' '.join([s1[i:i + word_length] for i in range(0, len(s1))]).replace('-','x')]
+    s2 = [' '.join([s2[i:i + word_length] for i in range(0, len(s2))]).replace('-', 'x')]
     s1 = np.array(tokenizer.texts_to_sequences(s1))
     s2 = np.array(tokenizer.texts_to_sequences(s2))
-    print(s1)
-    print(s2)
     return [s1, s2]
 
-w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
+#w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
 
 
 tokenizer = Tokenizer()
@@ -111,9 +106,11 @@ for layer in layer_outputs:
 activation_model = Model(inputs=model.input, outputs=layer_outputs)
 activations = activation_model.predict(get_test_alignment(x_valid, 0, 1, tokenizer))
 #print(activations)
+seq1 = np.argmax(activations[-3])
+seq2 = np.argmax(activations[-2])
 prediction = activations[-1]
-print(prediction)
-activation_1 = activations[7]
+print(seq1, seq2, prediction)
+activation_1 = activations[10]
 #print(activation_1)
 for kernel in activation_1[0]:
     words = np.reshape(kernel, (-1, word_length))
