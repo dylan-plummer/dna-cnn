@@ -46,6 +46,7 @@ def get_vocab(chars, word_length):
     for word in word_list:
         vocab[word] = i
         i += 1
+    print(vocab)
     return vocab
 
 print(pairwise2.align.localxx('aaatatatagcgacgactagc', 'acatcatctacgagcactatctagc', one_alignment_only=True))

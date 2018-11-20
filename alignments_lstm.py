@@ -12,29 +12,30 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, GlobalMaxPooling1D, dot, multiply
-from keras.layers import RepeatVector
+from keras.layers import RepeatVector, concatenate, Permute
 from keras.optimizers import SGD, Adam
 from keras.layers.merge import Dot
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 import gensim
 from keras.preprocessing.sequence import skipgrams
-from keras.utils import np_utils
+from keras.utils import np_utils, plot_model
 import matplotlib.pyplot as plt
 from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.001
+learning_rate = 0.01
 num_features = 372
-word_length = 8
+word_length = 6
 vec_length = 4
 batch_size = 4
 nb_epoch = 16
 hidden_size = 100
+sequences_per_family = 1000
 num_sequences = 10
 steps_per_epoch = 10
-num_classes = 11
+num_classes = 10
 num_filters = [16, 4]
 
 
@@ -215,29 +216,26 @@ def generate_batch(x, y, tokenizer):
         y1 = class_to_onehot(y1, num_classes)
         y2 = class_to_onehot(y2, num_classes)
         align_y = np_utils.to_categorical(align_y, num_classes=2)
-        print(s1)
-        print(s2)
-        print(score)
         yield [s1, s2, score], [y1, y2, align_y]
 
 
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0)
-x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1)
-x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me2.pos', pos=2)
-x3, y3 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me3.pos', pos=3)
-x4, y4 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k9ac.pos', pos=4)
-x5, y5 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k14ac.pos', pos=5)
-x6, y6 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k36me3.pos', pos=6)
-x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7)
-x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8)
-x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9)
+x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0, sequences_per_family=sequences_per_family)
+x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1, sequences_per_family=sequences_per_family)
+x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me2.pos', pos=2, sequences_per_family=sequences_per_family)
+x3, y3 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me3.pos', pos=3, sequences_per_family=sequences_per_family)
+x4, y4 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k9ac.pos', pos=4, sequences_per_family=sequences_per_family)
+x5, y5 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k14ac.pos', pos=5, sequences_per_family=sequences_per_family)
+x6, y6 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k36me3.pos', pos=6, sequences_per_family=sequences_per_family)
+x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7, sequences_per_family=sequences_per_family)
+x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8, sequences_per_family=sequences_per_family)
+x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9, sequences_per_family=sequences_per_family)
 
 
-x_rt = np.concatenate((x0,x1,x2,x3,x4,x5,x6,x7,x8,x9))
-y_rt = np.concatenate((y0,y1,y2,y3,y4,y5,y6,y7,y8,y9))
+x_rt = np.concatenate((x0, x1, x2, x3, x4, x5, x6, x7, x8, x9))
+y_rt = np.concatenate((y0, y1, y2, y3, y4, y5, y6, y7, y8, y9))
 
 
 #x_rt, y_rt = dhrt.load_data_and_labels('cami.pos', 'cami.neg')
@@ -266,52 +264,69 @@ print('Num Words:', V)
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder_a = Input(shape=(None,))
-layer_a = Embedding(V, 32)(encoder_a)
-layer_a = (LSTM(hidden_size, return_sequences=True))(layer_a)
-out_a = Conv1D(64, word_length)(layer_a)
+layer_a = Embedding(V, hidden_size)(encoder_a)
+layer_a = Dropout(0.2)(layer_a)
+#layer_a = (LSTM(hidden_size, return_sequences=True))(layer_a)
+out_a = Conv1D(128, word_length)(layer_a)
 out_a = MaxPooling1D(5)(out_a)
-out_a = Dropout(0.5)(out_a)
-out_a = GlobalMaxPooling1D()(out_a)
+out_a = Conv1D(256, 3)(out_a)
+out_a = MaxPooling1D(5)(out_a)
+out_a = LSTM(100)(out_a)
+#out_a = GlobalMaxPooling1D()(out_a)
+out_a = Dense(512, activation='relu')(out_a)
 out_a = Dense(num_classes, activation='softmax')(out_a)
 
 encoder_b = Input(shape=(None,))
-layer_b = Embedding(V, 32)(encoder_b)
-layer_b = (LSTM(hidden_size, return_sequences=True))(layer_b)
-out_b = Conv1D(64, word_length)(layer_b)
+layer_b = Embedding(V, hidden_size)(encoder_b)
+layer_b = Dropout(0.2)(layer_b)
+#layer_b = (LSTM(hidden_size, return_sequences=True))(layer_b)
+out_b = Conv1D(128, word_length)(layer_b)
 out_b = MaxPooling1D(5)(out_b)
-out_b = Dropout(0.5)(out_b)
-out_b = GlobalMaxPooling1D()(out_b)
+out_b = Conv1D(256, 3)(out_b)
+out_b = MaxPooling1D(5)(out_b)
+out_b = LSTM(100)(out_b)
+#out_b = GlobalMaxPooling1D()(out_b)
+out_b = Dense(512, activation='relu')(out_b)
 out_b = Dense(num_classes, activation='softmax')(out_b)
 
-align_score = Input(shape=(None,))
-#score = RepeatVector(100)(align_score)
+align_score = Input(shape=(1,))
+score = RepeatVector(hidden_size)(align_score)
+score = Permute((2, 1)) (score)
 #score_a = multiply([layer_a, align_score])
 #score_b = multiply([layer_b, align_score])
 
-decoder = dot([layer_a, layer_b], axes=1, normalize=True)
+decoder = concatenate([layer_a, layer_b], axis=1)
 
-score = dot([decoder, align_score], axes=-1)
+bias = concatenate([decoder, score], axis=1)
 
 #decoder = multiply([decoder, align_score])
 
 #dense_1 = Dense(2048, activation='relu')(pool_2)
 #dense_2 = Dense(1024, activation='relu')(dense_1)
-#conv_1 = Conv1D(64, word_length)(score)
-#pool_1 = MaxPooling1D(5)(conv_1)
-#drop = Dropout(0.5)(pool_1)
-output = Dense(2, activation='softmax')(score)
-model = Model(inputs=[encoder_a, encoder_b, align_score], outputs=[out_a, out_b, output])
+conv_1 = Conv1D(128, word_length)(bias)
+pool_1 = MaxPooling1D(5)(conv_1)
+conv_2 = Conv1D(256, 3)(pool_1)
+pool_2 = MaxPooling1D(5)(conv_2)
+output = LSTM(100)(pool_2)
+output = Dense(512, activation='relu')(output)
+output = Dense(2, activation='softmax')(output)
+model = Model(inputs=[encoder_a, encoder_b, align_score],
+              outputs=[out_a, out_b, output])
 
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
-model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['acc'])
+model.compile(loss='categorical_crossentropy',
+              optimizer=sgd,
+              metrics=['acc'],
+              loss_weights=[0.1, 0.1, 0.8])
 print('Training shapes:', x_train.shape, y_train.shape)
 print('Valid shapes:', x_valid.shape, y_valid.shape)
 print(model.summary())
+#plot_model(model, to_file='model.png', show_shapes=True)
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=8,#len(x_train)//batch_size//steps_per_epoch,
+                              epochs=16,#2 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
@@ -324,27 +339,29 @@ with open('model_architecture.json', 'w') as f:
 
 print(history.history.keys())
 # summarize history for accuracy
-plt.plot(history.history['dense_1_acc'])
 plt.plot(history.history['dense_2_acc'])
-plt.plot(history.history['dense_3_acc'])
-plt.plot(history.history['val_dense_1_acc'])
+plt.plot(history.history['dense_4_acc'])
+plt.plot(history.history['dense_6_acc'])
 plt.plot(history.history['val_dense_2_acc'])
-plt.plot(history.history['val_dense_3_acc'])
+plt.plot(history.history['val_dense_4_acc'])
+plt.plot(history.history['val_dense_6_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
 plt.legend(['seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
 plt.show()
 # summarize history for loss
-plt.plot(history.history['dense_1_loss'])
+plt.plot(history.history['loss'])
+plt.plot(history.history['val_loss'])
 plt.plot(history.history['dense_2_loss'])
-plt.plot(history.history['dense_3_loss'])
-plt.plot(history.history['val_dense_1_loss'])
+plt.plot(history.history['dense_4_loss'])
+plt.plot(history.history['dense_6_loss'])
 plt.plot(history.history['val_dense_2_loss'])
-plt.plot(history.history['val_dense_3_loss'])
+plt.plot(history.history['val_dense_4_loss'])
+plt.plot(history.history['val_dense_6_loss'])
 plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
-plt.legend(['seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
+plt.legend(['total_loss', 'total_val_loss', 'seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
 plt.show()
 

@@ -45,14 +45,17 @@ def load_data_and_labels(pos_file,neg_file):
     return [x_text, y]
 
 
-def load_data_and_labels_pos(pos_file, pos=1):
+def load_data_and_labels_pos(pos_file, pos=1, sequences_per_family=-1):
     """
     Loads MR polarity data from files, splits the data into words and generates labels.
     Returns split sentences and labels.
     """
     # Load data from files
     positive_examples = list(open(pos_file, "r").readlines())
-    positive_examples = [s.strip() for s in positive_examples]
+    if -1 < sequences_per_family < len(positive_examples):
+        positive_examples = [positive_examples[i].strip().replace(' ', '') for i in range(sequences_per_family)]
+    else:
+        positive_examples = [s.strip().replace(' ', '') for s in positive_examples]
     # Split by words
     x_text = positive_examples
     x_text = [clean_str(sent) for sent in x_text]
