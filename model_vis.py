@@ -8,10 +8,11 @@ import os
 from keras_preprocessing.text import Tokenizer
 
 import data_helpers as dhrt
+import matplotlib.pyplot as plt
 from sequence_helpers import class_to_onehot
 from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
-
+from sklearn.manifold import TSNE
 
 word_length = 8
 vec_length = 4
@@ -97,8 +98,26 @@ def get_test_alignment(x, seq_i, seq_j, tokenizer):
 
 
 tokenizer = Tokenizer()
-tokenizer.fit_on_texts(get_vocab('atcgx'))
+vocab = get_vocab('atcgx')
+tokenizer.fit_on_texts(vocab)
 
+print(model.layers)
+conv_embds = model.layers[2].get_weights()[0]
+## Plotting function
+def plot_words(data, start, stop, step):
+    trace = plt.Scatter(
+        x=data[start:stop:step,0],
+        y=data[start:stop:step, 1],
+        text=vocab.keys()[start:stop:step]
+    )
+    print('plot')
+    plt.plot(trace)
+    plt.show()
+
+conv_tsne_embds = TSNE(n_components=2).fit_transform(conv_embds)
+plot_words(conv_tsne_embds, 0, 2000, 1)
+
+'''
 layer_outputs = [layer.output for layer in model.layers[2:]]
 print(layer_outputs)
 for layer in layer_outputs:
@@ -118,3 +137,4 @@ for kernel in activation_1[0]:
     print(np.array(tokenizer.sequences_to_texts(np.round(words))))
 
     #print(w2v.similar_by_vector(words[0], topn=1)[0])
+    '''
