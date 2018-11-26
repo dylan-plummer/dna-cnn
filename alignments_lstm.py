@@ -20,9 +20,9 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.01
+learning_rate = 0.0001
 num_features = 372
-word_length = 6
+word_length = 8
 vec_length = 4
 batch_size = 4
 nb_epoch = 16
@@ -210,7 +210,7 @@ def generate_batch(x, y, tokenizer):
         align_y = 1*np.equal(y1, y2)
         y1 = class_to_onehot(y1, num_classes)
         y2 = class_to_onehot(y2, num_classes)
-        align_y = np_utils.to_categorical(align_y, num_classes=2)
+        #align_y = np_utils.to_categorical(align_y, num_classes=2)
         yield [s1, s2, score], align_y
 
 
@@ -297,17 +297,17 @@ bias = concatenate([decoder, score], axis=1)
 conv_1 = Conv1D(128, word_length)(bias)
 conv_2 = Conv1D(256, 3)(conv_1)
 pool_2 = MaxPooling1D(20)(conv_2)
-output = LSTM(100)(pool_2)
+output = Bidirectional(LSTM(100))(pool_2)
 output = Dense(2048, activation='relu')(output)
 output = Dense(1024, activation='relu')(output)
 output = Dense(512, activation='relu')(output)
-output = Dense(2, activation='softmax')(output)
+output = Dense(1, activation='sigmoid')(output)
 model = Model(inputs=[encoder_a, encoder_b, align_score],
               outputs=output)
 
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
-model.compile(loss='categorical_crossentropy',
+model.compile(loss='binary_crossentropy',
               optimizer=sgd,
               metrics=['acc'])
 print('Training shapes:', x_train.shape, y_train.shape)
@@ -317,7 +317,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=32,#2 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=32,#len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
