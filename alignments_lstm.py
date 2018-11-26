@@ -1,14 +1,9 @@
 import random
 import os
 import data_helpers as dhrt
-from tensorflow.contrib import learn
 import numpy as np
-import re
-from sklearn.preprocessing import StandardScaler
 from sequence_helpers import get_alignments, get_vocab, class_to_onehot
 
-
-from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, GlobalMaxPooling1D, dot, multiply
@@ -32,10 +27,10 @@ vec_length = 4
 batch_size = 4
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = 1000
+sequences_per_family = 2000
 num_sequences = 10
 steps_per_epoch = 10
-num_classes = 10
+num_classes = 20
 num_filters = [16, 4]
 
 
@@ -216,7 +211,7 @@ def generate_batch(x, y, tokenizer):
         y1 = class_to_onehot(y1, num_classes)
         y2 = class_to_onehot(y2, num_classes)
         align_y = np_utils.to_categorical(align_y, num_classes=2)
-        yield [s1, s2, score], [y1, y2, align_y]
+        yield [s1, s2, score], align_y
 
 
 # load data
@@ -233,12 +228,26 @@ x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7, sequence
 x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8, sequences_per_family=sequences_per_family)
 x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9, sequences_per_family=sequences_per_family)
 
+'''
+x0_neg, y0_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3.neg', pos=10, sequences_per_family=sequences_per_family)
+x1_neg, y1_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me1.neg', pos=11, sequences_per_family=sequences_per_family)
+x2_neg, y2_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me2.neg', pos=12, sequences_per_family=sequences_per_family)
+x3_neg, y3_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me3.neg', pos=13, sequences_per_family=sequences_per_family)
+x4_neg, y4_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k9ac.neg', pos=14, sequences_per_family=sequences_per_family)
+x5_neg, y5_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k14ac.neg', pos=15, sequences_per_family=sequences_per_family)
+x6_neg, y6_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k36me3.neg', pos=16, sequences_per_family=sequences_per_family)
+x7_neg, y7_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k79me3.neg', pos=17, sequences_per_family=sequences_per_family)
+x8_neg, y8_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h4.neg', pos=18, sequences_per_family=sequences_per_family)
+x9_neg, y9_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h4ac.neg', pos=19, sequences_per_family=sequences_per_family)
+'''
 
 x_rt = np.concatenate((x0, x1, x2, x3, x4, x5, x6, x7, x8, x9))
+                       #x0_neg, x1_neg, x2_neg, x3_neg, x4_neg, x5_neg, x6_neg, x7_neg, x8_neg, x9_neg))
 y_rt = np.concatenate((y0, y1, y2, y3, y4, y5, y6, y7, y8, y9))
+                       #y0_neg, y1_neg, y2_neg, y3_neg, y4_neg, y5_neg, y6_neg, y7_neg, y8_neg, y9_neg))
 
 
-#x_rt, y_rt = dhrt.load_data_and_labels('cami.pos', 'cami.neg')
+#x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -265,29 +274,11 @@ print('Num Words:', V)
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder_a = Input(shape=(None,))
 layer_a = Embedding(V, hidden_size)(encoder_a)
-layer_a = Dropout(0.2)(layer_a)
-#layer_a = (LSTM(hidden_size, return_sequences=True))(layer_a)
-out_a = Conv1D(128, word_length)(layer_a)
-out_a = MaxPooling1D(5)(out_a)
-out_a = Conv1D(256, 3)(out_a)
-out_a = MaxPooling1D(5)(out_a)
-out_a = LSTM(100)(out_a)
-#out_a = GlobalMaxPooling1D()(out_a)
-out_a = Dense(512, activation='relu')(out_a)
-out_a = Dense(num_classes, activation='softmax')(out_a)
+layer_a = Dropout(0.5)(layer_a)
 
 encoder_b = Input(shape=(None,))
 layer_b = Embedding(V, hidden_size)(encoder_b)
-layer_b = Dropout(0.2)(layer_b)
-#layer_b = (LSTM(hidden_size, return_sequences=True))(layer_b)
-out_b = Conv1D(128, word_length)(layer_b)
-out_b = MaxPooling1D(5)(out_b)
-out_b = Conv1D(256, 3)(out_b)
-out_b = MaxPooling1D(5)(out_b)
-out_b = LSTM(100)(out_b)
-#out_b = GlobalMaxPooling1D()(out_b)
-out_b = Dense(512, activation='relu')(out_b)
-out_b = Dense(num_classes, activation='softmax')(out_b)
+layer_b = Dropout(0.5)(layer_b)
 
 align_score = Input(shape=(1,))
 score = RepeatVector(hidden_size)(align_score)
@@ -304,21 +295,21 @@ bias = concatenate([decoder, score], axis=1)
 #dense_1 = Dense(2048, activation='relu')(pool_2)
 #dense_2 = Dense(1024, activation='relu')(dense_1)
 conv_1 = Conv1D(128, word_length)(bias)
-pool_1 = MaxPooling1D(5)(conv_1)
-conv_2 = Conv1D(256, 3)(pool_1)
-pool_2 = MaxPooling1D(5)(conv_2)
+conv_2 = Conv1D(256, 3)(conv_1)
+pool_2 = MaxPooling1D(20)(conv_2)
 output = LSTM(100)(pool_2)
+output = Dense(2048, activation='relu')(output)
+output = Dense(1024, activation='relu')(output)
 output = Dense(512, activation='relu')(output)
 output = Dense(2, activation='softmax')(output)
 model = Model(inputs=[encoder_a, encoder_b, align_score],
-              outputs=[out_a, out_b, output])
+              outputs=output)
 
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
 model.compile(loss='categorical_crossentropy',
               optimizer=sgd,
-              metrics=['acc'],
-              loss_weights=[0.1, 0.1, 0.8])
+              metrics=['acc'])
 print('Training shapes:', x_train.shape, y_train.shape)
 print('Valid shapes:', x_valid.shape, y_valid.shape)
 print(model.summary())
@@ -326,7 +317,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=16,#2 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=32,#2 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
@@ -339,29 +330,19 @@ with open('model_architecture.json', 'w') as f:
 
 print(history.history.keys())
 # summarize history for accuracy
-plt.plot(history.history['dense_2_acc'])
-plt.plot(history.history['dense_4_acc'])
-plt.plot(history.history['dense_6_acc'])
-plt.plot(history.history['val_dense_2_acc'])
-plt.plot(history.history['val_dense_4_acc'])
-plt.plot(history.history['val_dense_6_acc'])
+plt.plot(history.history['acc'])
+plt.plot(history.history['val_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-plt.legend(['seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
+plt.legend(['train', 'test'], loc='upper left')
 plt.show()
 # summarize history for loss
 plt.plot(history.history['loss'])
 plt.plot(history.history['val_loss'])
-plt.plot(history.history['dense_2_loss'])
-plt.plot(history.history['dense_4_loss'])
-plt.plot(history.history['dense_6_loss'])
-plt.plot(history.history['val_dense_2_loss'])
-plt.plot(history.history['val_dense_4_loss'])
-plt.plot(history.history['val_dense_6_loss'])
 plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
-plt.legend(['total_loss', 'total_val_loss', 'seq1', 'seq2', 'same', 'val_seq1', 'val_seq2', 'val_same'], loc='upper left')
+plt.legend(['total_loss', 'total_val_loss'], loc='upper left')
 plt.show()
 
