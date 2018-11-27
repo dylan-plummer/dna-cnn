@@ -36,6 +36,26 @@ def class_to_onehot(y, num_classes):
     return onehot
 
 
+def split_alignments(x, max_len, word_length):
+    s1 = []
+    s2 = []
+    for i in range(len(x)):
+        proc1 = ''
+        proc2 = ''
+        for j in range(max_len):
+            if j < len(x[i][0]):
+                proc1 += (x[i][0][j]).replace('-', 'x')
+                proc2 += (x[i][1][j]).replace('-', 'x')
+            else:
+                proc1 += 'x'
+                proc2 += 'x'
+        proc1 = ' '.join([proc1[i:i + word_length] for i in range(0, len(proc1))])
+        proc2 = ' '.join([proc2[i:i + word_length] for i in range(0, len(proc2))])
+        s1 = np.append(s1, proc1)
+        s2 = np.append(s2, proc2)
+    return s1, s2
+
+
 def get_vocab(chars, word_length):
     vocab = {}
     i = 0
