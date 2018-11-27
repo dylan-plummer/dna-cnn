@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 from sequence_helpers import get_alignments, get_vocab, class_to_onehot, split_alignments
 from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
-from sklearn.manifold import TSNE
-#from MulticoreTSNE import MulticoreTSNE as TSNE
+#from sklearn.manifold import TSNE
+from MulticoreTSNE import MulticoreTSNE as TSNE
 
 word_length = 8
 vec_length = 4
@@ -198,7 +198,7 @@ conv_embds = model.layers[2].get_weights()[0]
 print(conv_embds)
 
 
-def plot_words(data, start, stop, step, num_classes, perplexity):
+def plot_words(data, perplexity):
     center_points = np.zeros([num_classes, 2])
 
     color_map_name = 'gist_rainbow'
@@ -208,7 +208,7 @@ def plot_words(data, start, stop, step, num_classes, perplexity):
     plt.hold(True)
     for cc in range(num_classes):
         # Plot each class using a different color
-        cfloat = (cc * 5 + 1.0) / num_classes
+        cfloat = (cc + 1.0) / num_classes / 5
         keep_points = np.where(plot_act_res == cc)[0]
         cur_plot = data#[start:stop:step]
 
@@ -252,7 +252,7 @@ for perplexity in perplexity_list:
                           #metric='correlation',
                           #verbose=1).fit_transform(plot_data_points)
     print('Running viz')
-    plot_words(embedding, 0, 1000, 1, perplexity)
+    plot_words(embedding, perplexity)
 
 '''
 layer_outputs = [layer.output for layer in model.layers[2:]]
