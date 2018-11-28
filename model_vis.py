@@ -19,7 +19,7 @@ from MulticoreTSNE import MulticoreTSNE as TSNE
 word_length = 8
 vec_length = 4
 num_classes = 2
-batch_size = 4
+batch_size = 8
 sequences_per_family = 2000
 
 # load data
@@ -178,7 +178,7 @@ if True:
     act_res = np.zeros(max_to_pred)
     all_text = []
     all_titles = []
-    pred_generator = generate_batch(x_train, y_train, tokenizer, batch_size=batch_size, iter=20)
+    pred_generator = generate_batch(x_train, y_train, tokenizer, batch_size=batch_size, iter=10)
     num_predded = 0
     for pred_inputs in pred_generator:
         X_pred, y_true, obj_title = pred_inputs
@@ -201,14 +201,18 @@ print(conv_embds)
 def plot_words(data, perplexity):
     center_points = np.zeros([num_classes, 2])
 
-    color_map_name = 'gist_rainbow'
+    color_map_name = 'bwr'
     cmap = plt.get_cmap(color_map_name)
 
     plt.figure()
     plt.hold(True)
     for cc in range(num_classes):
         # Plot each class using a different color
-        cfloat = (cc + 1.0) / num_classes / 5
+        print('CC', cc)
+        if cc == 1:
+            cfloat = 5.0
+        else:
+            cfloat = -5.0
         keep_points = np.where(plot_act_res == cc)[0]
         cur_plot = data#[start:stop:step]
 
@@ -217,7 +221,7 @@ def plot_words(data, perplexity):
         peak_label = '%s_tSNE' % cc
 
         # Scatter plot
-        plt.plot(cur_plot[:, 0], cur_plot[:, 1], 'o', color=cur_color, alpha=0.5)
+        plt.plot(cur_plot[:, 0], cur_plot[:, 1], 'o', color=cur_color, alpha=0.2)
 
         x, y = cur_plot[-1, :]
         plt.annotate(peak_label,
