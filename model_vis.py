@@ -10,16 +10,18 @@ from keras_preprocessing.text import Tokenizer
 
 import data_helpers as dhrt
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from sequence_helpers import get_alignments, get_vocab, class_to_onehot, split_alignments
 from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
-#from sklearn.manifold import TSNE
-from MulticoreTSNE import MulticoreTSNE as TSNE
+from keras.utils import np_utils
+from sklearn.manifold import TSNE
+#from MulticoreTSNE import MulticoreTSNE as TSNE
 
 word_length = 8
 vec_length = 4
 num_classes = 2
-batch_size = 8
+batch_size = 2
 sequences_per_family = 2000
 
 # load data
@@ -53,7 +55,6 @@ def get_vocab(chars):
     for word in word_list:
         vocab[word] = i
         i += 1
-    print('Vocab:', vocab)
     return vocab
 
 
@@ -101,56 +102,33 @@ with open('model_architecture.json', 'r') as f:
 model.load_weights('model_weights.h5')
 
 
-def alignment2vec(alignment, w2v):
-    vec = []
-    word_list = alignment.split(' ')
-    if len(word_list[-1]) != word_length:
-        word_list = word_list[:-1]
-    for word in word_list:
-        try:
-            if len(vec) == 0:
-                vec = w2v.word_vec(word)
-            else:
-                vec = np.vstack((vec, w2v.word_vec(word)))
-        except Exception as e:
-            print('Word', word, 'not in vocab')
-    vec = np.reshape(vec, (len(word_list), -1))
-    return vec
-
-
-def generate_batch(x, y, tokenizer, batch_size, iter):
-    indices_i = np.arange(0, len(x) - 1 - batch_size)
-    indices_j = np.arange(0, len(x) - 1 - batch_size)
-    for _ in range(iter):
-        if len(indices_i) == 0:
-            indices_i = np.arange(0, len(x) - 1 - batch_size)
-        if len(indices_j) == 0:
-            indices_j = np.arange(0, len(x) - 1 - batch_size)
-        i = np.random.choice(indices_i, 1, replace=False)[0]
-        j = np.random.choice(indices_j, 1, replace=False)[0]
-        print(i, j, x.shape, y.shape)
-        if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
-        elif (i + batch_size) >= len(x):
-            print('End of training set, temp batch:', len(x[i:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
-        else:
-            print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
-        a1, a2 = split_alignments(align_x, max_length, word_length)
-        s1, s2 = [], []
-        for alignment in a1:
-            s1 = np.append(s1, alignment.split(' '))
-        for alignment in a2:
-            s2 = np.append(s2, alignment.split(' '))
-        s1 = np.array(tokenizer.texts_to_sequences(a1))
-        s2 = np.array(tokenizer.texts_to_sequences(a2))
-        s1 = np.reshape(s1, (a1.shape[0], -1))
-        s2 = np.reshape(s2, (a2.shape[0], -1))
-        y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
-        y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
-        align_y = 1*np.equal(y1, y2)
-        yield [s1, s2, score], align_y, score
+def generate_batch(x, y, tokenizer):
+    while True:
+        for i in range(len(x) - batch_size):
+            for j in range(len(y) - batch_size):
+                if (i + batch_size) < len(x) and (j + batch_size) < len(x):
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
+                elif (i + batch_size) >= len(x):
+                    print('End of training set, temp batch:', len(x[i:]))
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
+                else:
+                    print('End of training set, temp batch:', len(x[j:]))
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
+                a1, a2 = split_alignments(align_x, max_length, word_length)
+                s1, s2 = [], []
+                for alignment in a1:
+                    s1 = np.append(s1, alignment.split(' '))
+                for alignment in a2:
+                    s2 = np.append(s2, alignment.split(' '))
+                s1 = np.array(tokenizer.texts_to_sequences(a1))
+                s2 = np.array(tokenizer.texts_to_sequences(a2))
+                s1 = np.reshape(s1, (a1.shape[0], -1))
+                s2 = np.reshape(s2, (a2.shape[0], -1))
+                y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
+                y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
+                align_y = 1*np.equal(y1, y2)
+                #align_y = np_utils.to_categorical(align_y, num_classes=2)
+                yield [s1, s2], align_y, score/float(max_length)
 
 
 def get_test_alignment(x, seq_i, seq_j, tokenizer):
@@ -178,19 +156,23 @@ if True:
     act_res = np.zeros(max_to_pred)
     all_text = []
     all_titles = []
-    pred_generator = generate_batch(x_train, y_train, tokenizer, batch_size=batch_size, iter=10)
+    pred_generator = generate_batch(x_train, y_train, tokenizer)
     num_predded = 0
     for pred_inputs in pred_generator:
         X_pred, y_true, obj_title = pred_inputs
         # all_text += raw_text
         all_titles.append(obj_title)
         y_preds = model.predict(X_pred)
-
+        #print(y_preds.T[0])
+        #print(y_true)
         offset = num_predded
         num_predded += X_pred[0].shape[0]
 
-        pred_res[offset:offset + y_preds.shape[0], :] = y_preds
+        pred_res[offset:offset + y_preds.shape[0], :] = np.argmax(y_preds.T[0], axis=0)
         act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=0)
+        print(len(all_titles))
+        if len(all_titles) == max_to_pred:
+            break
 
 all_titles = np.array(all_titles)
 
@@ -201,19 +183,19 @@ print(conv_embds)
 def plot_words(data, perplexity):
     center_points = np.zeros([num_classes, 2])
 
-    color_map_name = 'bwr'
+    color_map_name = 'tab20'
     cmap = plt.get_cmap(color_map_name)
 
-    plt.figure()
-    plt.hold(True)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
     for cc in range(num_classes):
         # Plot each class using a different color
         print('CC', cc)
         if cc == 1:
-            cfloat = 5.0
+            cfloat = 1.0
         else:
-            cfloat = -5.0
-        keep_points = np.where(plot_act_res == cc)[0]
+            cfloat = -1.0
+        #keep_points = np.where(plot_act_res == cc)[0]
         cur_plot = data#[start:stop:step]
 
         cur_color = cmap(cfloat)
@@ -221,21 +203,10 @@ def plot_words(data, perplexity):
         peak_label = '%s_tSNE' % cc
 
         # Scatter plot
-        plt.plot(cur_plot[:, 0], cur_plot[:, 1], 'o', color=cur_color, alpha=0.2)
-
-        x, y = cur_plot[-1, :]
-        plt.annotate(peak_label,
-                     xy=(x, y),
-                     xytext=(5, 2),
-                     size='small',
-                     alpha=0.8,
-                     textcoords='offset points',
-                     ha='right',
-                     va='bottom')
-
-        # Plot points in class 6 and 7, just to look at overlap
-        # if cc in [6,7]:
-        # plot_with_labels(cur_plot[0:-1], all_titles[keep_points[0:-1]], text_alpha=0.5)
+        if cc == 1:
+            ax.scatter(data[:, 0], data[:, 1], data[:, 2], c='g', marker='^', alpha=0.3)
+        else:
+            ax.scatter(data[:, 0], data[:, 1], data[:, 2], c='r', marker='o', alpha=0.3)
 
 
     plt.title('tSNE Visualization. Perplexity %d' % perplexity)
@@ -247,10 +218,10 @@ print('Fitting weights')
 # Add class centers. Have to do this before the tSNE transformation
 plot_data_points = np.concatenate([pred_res, np.identity(num_classes)], axis=0)
 plot_act_res = np.concatenate([act_res, np.arange(num_classes)])
-perplexity_list = [5, 30, 60, 250]
+perplexity_list = [5, 30, 60, 250, 500]
 
 for perplexity in perplexity_list:
-    embedding = TSNE(perplexity=perplexity, n_components=2, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)
+    embedding = TSNE(perplexity=perplexity, n_components=3, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)
     #embedding = umap.UMAP(n_neighbors=2,
                           #min_dist=0.1,
                           #metric='correlation',

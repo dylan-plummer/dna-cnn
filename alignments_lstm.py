@@ -2,7 +2,7 @@ import random
 import os
 import data_helpers as dhrt
 import numpy as np
-from sequence_helpers import get_alignments, get_vocab, class_to_onehot
+from sequence_helpers import get_alignments, get_vocab, class_to_onehot, split_alignments
 
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential, Model
@@ -20,198 +20,47 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.0001
+learning_rate = 0.01
 num_features = 372
-word_length = 8
+word_length = 6
 vec_length = 4
-batch_size = 4
+batch_size = 8
 nb_epoch = 16
-hidden_size = 100
-sequences_per_family = 2000
+hidden_size = 25
+sequences_per_family = 10
 num_sequences = 10
 steps_per_epoch = 10
 num_classes = 20
 num_filters = [16, 4]
 
 
-def split_alignments(x, max_len):
-    s1 = []
-    s2 = []
-    for i in range(len(x)):
-        proc1 = ''
-        proc2 = ''
-        for j in range(max_len):
-            if j < len(x[i][0]):
-                proc1 += (x[i][0][j]).replace('-', 'x')
-                proc2 += (x[i][1][j]).replace('-', 'x')
-            else:
-                proc1 += 'x'
-                proc2 += 'x'
-        proc1 = ' '.join([proc1[i:i + word_length] for i in range(0, len(proc1))])
-        proc2 = ' '.join([proc2[i:i + word_length] for i in range(0, len(proc2))])
-        s1 = np.append(s1, proc1)
-        s2 = np.append(s2, proc2)
-    return s1, s2
-
-
-def generate_vec_batch(x_train, y_train, batch_size, tokenizer, SkipGram):
-    indices_i = np.arange(0, len(x_train) - 1 - batch_size)
-    indices_j = np.arange(0, len(x_train) - 1 - batch_size)
-    while True:
-        if len(indices_i) == 0:
-            indices_i = np.arange(0, len(x_train) - 1 - batch_size)
-        if len(indices_j) == 0:
-            indices_j = np.arange(0, len(x_train) - 1 - batch_size)
-        i = np.random.choice(indices_i, 1, replace=False)[0]
-        j = np.random.choice(indices_j, 1, replace=False)[0]
-        if (i + batch_size) < len(x_train) and (j + batch_size) < len(x_train):
-            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, batch_size))
-        elif (i + batch_size) >= len(x_train):
-            print('End of training set, temp batch:', len(x_train[i:]))
-            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[i:])))
-        else:
-            print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, score, max_length = (get_alignments(x_train, y_train, i, j, len(x_train[j:])))
-        s1, s2 = split_alignments(align_x, max_length)
-        for _, doc in enumerate(pad_sequences(tokenizer.texts_to_sequences(np.append(s1, s2)), maxlen=max_length, padding='post')):
-            data, labels = skipgrams(sequence=doc, vocabulary_size=V, window_size=word_length, negative_samples=5.)
-            x = [np.array(x) for x in zip(*data)]
-            y = np.array(labels, dtype=np.int32)
-            if x:
-                yield x, y
-
-
-def alignments2vec(x, y, V, tokenizer):
-    # inputs
-    w_inputs = Input(shape=(1,), dtype='int32')
-    w = Embedding(V, vec_length)(w_inputs)
-
-    # context
-    c_inputs = Input(shape=(1,), dtype='int32')
-    c = Embedding(V, vec_length)(c_inputs)
-    o = Dot(axes=2)([w, c])
-    o = Reshape((1,), input_shape=(1, 1))(o)
-    o = Activation('sigmoid')(o)
-
-    SkipGram = Model(inputs=[w_inputs, c_inputs], outputs=o)
-    SkipGram.summary()
-    SkipGram.compile(loss='binary_crossentropy', optimizer='adam')
-
-    history = SkipGram.fit_generator(generate_vec_batch(x, y, batch_size, tokenizer, SkipGram),
-                           steps_per_epoch=steps_per_epoch,
-                           epochs=300,#len(x_train)//batch_size//steps_per_epoch,
-                           validation_data=generate_vec_batch(x, y, batch_size, tokenizer, SkipGram),
-                           validation_steps=steps_per_epoch)
-
-    print(history.history.keys())
-    # summarize history for accuracy
-    # summarize history for loss
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title('model loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.show()
-
-    f = open('alignment_vec.txt', 'w')
-    f.write('{} {}\n'.format(V - 1, vec_length))
-    vectors = SkipGram.get_weights()[0]
-    for word, i in tokenizer.word_index.items():
-        f.write('{} {}\n'.format(word, ' '.join(map(str, list(vectors[i, :])))))
-    f.close()
-
-    w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
-    print(w2v.most_similar(positive=['a'*word_length]))
-
-
-def get_list_of_word2vec(x, w2v, max_length, n_samples):
-    word_vec = []
-    for alignment in x:
-        vec = []
-        word_list = alignment.split(' ')
-        if len(word_list[-1]) != word_length:
-            word_list = word_list[:-1]
-        for word in word_list:
-            try:
-                if len(vec) == 0:
-                    vec = w2v.word_vec(word)
-                else:
-                    vec = np.vstack((vec, w2v.word_vec(word)))
-            except Exception as e:
-                print('Word', word, 'not in vocab')
-        vec = np.reshape(vec, (len(word_list), -1))
-        if len(word_vec) == 0:
-            word_vec = vec
-        else:
-            word_vec = np.dstack((word_vec, vec))
-    word_vec = np.reshape(word_vec, (n_samples, -1, vec_length))
-    return word_vec
-
-
-def generate_word2vec_batch(x, y):
-    indices_i = np.arange(0, len(x) - 1 - batch_size)
-    indices_j = np.arange(0, len(x) - 1 - batch_size)
-    while True:
-        if len(indices_i) == 0:
-            indices_i = np.arange(0, len(x) - 1 - batch_size)
-        if len(indices_j) == 0:
-            indices_j = np.arange(0, len(x) - 1 - batch_size)
-        i = np.random.choice(indices_i, 1, replace=False)[0]
-        j = np.random.choice(indices_j, 1, replace=False)[0]
-        w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
-        if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
-        elif (i + batch_size) >= len(x):
-            print('End of training set, temp batch:', len(x[i:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
-        else:
-            print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
-        #text = zip_alignments(align_x, max_length)
-        s1, s2 = split_alignments(align_x, max_length)
-        word2vec1 = get_list_of_word2vec(s1, w2v, max_length, align_y.shape[0])
-        word2vec2 = get_list_of_word2vec(s2, w2v, max_length, align_y.shape[0])
-        align_y = np_utils.to_categorical(align_y)
-        if align_y.shape[1] == 2:
-            yield [word2vec1, word2vec2], align_y
-
-
 def generate_batch(x, y, tokenizer):
-    indices_i = np.arange(0, len(x) - 1 - batch_size)
-    indices_j = np.arange(0, len(x) - 1 - batch_size)
     while True:
-        if len(indices_i) == 0:
-            indices_i = np.arange(0, len(x) - 1 - batch_size)
-        if len(indices_j) == 0:
-            indices_j = np.arange(0, len(x) - 1 - batch_size)
-        i = np.random.choice(indices_i, 1, replace=False)[0]
-        j = np.random.choice(indices_j, 1, replace=False)[0]
-        if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
-        elif (i + batch_size) >= len(x):
-            print('End of training set, temp batch:', len(x[i:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
-        else:
-            print('End of training set, temp batch:', len(x[j:]))
-            align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
-        a1, a2 = split_alignments(align_x, max_length)
-        s1, s2 = [], []
-        for alignment in a1:
-            s1 = np.append(s1, alignment.split(' '))
-        for alignment in a2:
-            s2 = np.append(s2, alignment.split(' '))
-        s1 = np.array(tokenizer.texts_to_sequences(a1))
-        s2 = np.array(tokenizer.texts_to_sequences(a2))
-        s1 = np.reshape(s1, (a1.shape[0], -1))
-        s2 = np.reshape(s2, (a2.shape[0], -1))
-        y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
-        y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
-        align_y = 1*np.equal(y1, y2)
-        y1 = class_to_onehot(y1, num_classes)
-        y2 = class_to_onehot(y2, num_classes)
-        #align_y = np_utils.to_categorical(align_y, num_classes=2)
-        yield [s1, s2, score], align_y
+        for i in range(len(x) - batch_size):
+            for j in range(len(y) - batch_size):
+                if (i + batch_size) < len(x) and (j + batch_size) < len(x):
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
+                elif (i + batch_size) >= len(x):
+                    print('End of training set, temp batch:', len(x[i:]))
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
+                else:
+                    print('End of training set, temp batch:', len(x[j:]))
+                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
+                a1, a2 = split_alignments(align_x, max_length, word_length)
+                s1, s2 = [], []
+                for alignment in a1:
+                    s1 = np.append(s1, alignment.split(' '))
+                for alignment in a2:
+                    s2 = np.append(s2, alignment.split(' '))
+                s1 = np.array(tokenizer.texts_to_sequences(a1))
+                s2 = np.array(tokenizer.texts_to_sequences(a2))
+                s1 = np.reshape(s1, (a1.shape[0], -1))
+                s2 = np.reshape(s2, (a2.shape[0], -1))
+                y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
+                y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
+                align_y = 1*np.equal(y1, y2)
+                #align_y = np_utils.to_categorical(align_y, num_classes=2)
+                yield [s1, s2, score/float(max_length)], align_y
 
 
 # load data
@@ -228,34 +77,14 @@ x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7, sequence
 x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8, sequences_per_family=sequences_per_family)
 x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9, sequences_per_family=sequences_per_family)
 
-'''
-x0_neg, y0_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3.neg', pos=10, sequences_per_family=sequences_per_family)
-x1_neg, y1_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me1.neg', pos=11, sequences_per_family=sequences_per_family)
-x2_neg, y2_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me2.neg', pos=12, sequences_per_family=sequences_per_family)
-x3_neg, y3_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k4me3.neg', pos=13, sequences_per_family=sequences_per_family)
-x4_neg, y4_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k9ac.neg', pos=14, sequences_per_family=sequences_per_family)
-x5_neg, y5_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k14ac.neg', pos=15, sequences_per_family=sequences_per_family)
-x6_neg, y6_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k36me3.neg', pos=16, sequences_per_family=sequences_per_family)
-x7_neg, y7_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h3k79me3.neg', pos=17, sequences_per_family=sequences_per_family)
-x8_neg, y8_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h4.neg', pos=18, sequences_per_family=sequences_per_family)
-x9_neg, y9_neg = dhrt.load_data_and_labels_pos(dir + 'neg/h4ac.neg', pos=19, sequences_per_family=sequences_per_family)
-'''
-
 x_rt = np.concatenate((x0, x1, x2, x3, x4, x5, x6, x7, x8, x9))
-                       #x0_neg, x1_neg, x2_neg, x3_neg, x4_neg, x5_neg, x6_neg, x7_neg, x8_neg, x9_neg))
 y_rt = np.concatenate((y0, y1, y2, y3, y4, y5, y6, y7, y8, y9))
-                       #y0_neg, y1_neg, y2_neg, y3_neg, y4_neg, y5_neg, y6_neg, y7_neg, y8_neg, y9_neg))
-
-
-#x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
 shuffled_rt = np.random.permutation(range(len(x_rt)))
 x_shuffle = x_rt[shuffled_rt]
 y_shuffle = y_rt[shuffled_rt]
-#print('X:', x_shuffle)
-#print('Y:', y_shuffle)
 print(pairwise2.align.localxx(x_shuffle[0], x_shuffle[1], one_alignment_only=True))
 
 x_train, x_valid, y_train, y_valid = train_test_split(x_shuffle,
@@ -269,40 +98,31 @@ tokenizer.fit_on_texts(get_vocab('atcgx', word_length))
 V = len(tokenizer.word_index) + 1
 print('Num Words:', V)
 
-#alignments2vec(x_train, y_train, V, tokenizer) #uncomment to train word2vec representation
-
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder_a = Input(shape=(None,))
 layer_a = Embedding(V, hidden_size)(encoder_a)
-layer_a = Dropout(0.5)(layer_a)
+#layer_a = Dropout(0.5)(layer_a)
 
 encoder_b = Input(shape=(None,))
 layer_b = Embedding(V, hidden_size)(encoder_b)
-layer_b = Dropout(0.5)(layer_b)
+#layer_b = Dropout(0.5)(layer_b)
 
-align_score = Input(shape=(1,))
-score = RepeatVector(hidden_size)(align_score)
-score = Permute((2, 1)) (score)
-#score_a = multiply([layer_a, align_score])
-#score_b = multiply([layer_b, align_score])
+score = Input(shape=(1,))
 
 decoder = concatenate([layer_a, layer_b], axis=1)
 
-bias = concatenate([decoder, score], axis=1)
+'''
+output = Conv1D(128, word_length, activation='relu')(decoder)
+output = MaxPooling1D(5)(output)
+output = Conv1D(128, word_length, activation='relu')(decoder)
+output = MaxPooling1D(20)(output)
+'''
 
-#decoder = multiply([decoder, align_score])
-
-#dense_1 = Dense(2048, activation='relu')(pool_2)
-#dense_2 = Dense(1024, activation='relu')(dense_1)
-conv_1 = Conv1D(128, word_length)(bias)
-conv_2 = Conv1D(256, 3)(conv_1)
-pool_2 = MaxPooling1D(20)(conv_2)
-output = Bidirectional(LSTM(100))(pool_2)
-output = Dense(2048, activation='relu')(output)
-output = Dense(1024, activation='relu')(output)
-output = Dense(512, activation='relu')(output)
+output = GlobalMaxPooling1D()(decoder)
+bias = concatenate([output, score], axis=1)
+#output = Dense(32, activation='relu')(bias)
 output = Dense(1, activation='sigmoid')(output)
-model = Model(inputs=[encoder_a, encoder_b, align_score],
+model = Model(inputs=[encoder_a, encoder_b, score],
               outputs=output)
 
 adam = Adam(lr=learning_rate)
@@ -317,7 +137,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=32,#len(x_train)//batch_size//steps_per_epoch,
+                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
