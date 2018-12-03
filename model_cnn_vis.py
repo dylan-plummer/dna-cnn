@@ -19,12 +19,14 @@ from sklearn.manifold import TSNE
 
 word_length = 6
 vec_length = 4
-num_classes = 2
-batch_size = 2
-sequences_per_family = 10
+num_classes = 10
+batch_size = 64
+sequences_per_family = 1000
 
 # load data
 dir = os.getcwd() + '/histone_data/'
+
+class_labels = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
 
 x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0, sequences_per_family=sequences_per_family)
 x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1, sequences_per_family=sequences_per_family)
@@ -100,53 +102,26 @@ with open('model_architecture.json', 'r') as f:
 # Load weights into the new model
 model.load_weights('model_weights.h5')
 
+def split_sequence(x, word_length):
+    split_seq = np.array([])
+    for seq in x:
+        split_seq = np.append(split_seq, ' '.join([seq[i:i + word_length] for i in range(0, len(seq))]))
+    return split_seq
+
 
 def generate_batch(x, y, tokenizer):
     while True:
         for i in range(len(x) - batch_size):
-            for j in range(len(y) - batch_size):
-                if (i + batch_size) < len(x) and (j + batch_size) < len(x):
-                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, batch_size))
-                elif (i + batch_size) >= len(x):
-                    print('End of training set, temp batch:', len(x[i:]))
-                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[i:])))
-                else:
-                    print('End of training set, temp batch:', len(x[j:]))
-                    align_x, align_y, score, max_length = (get_alignments(x, y, i, j, len(x[j:])))
-                a1, a2 = split_alignments(align_x, max_length, word_length)
-                s1, s2 = [], []
-                for alignment in a1:
-                    s1 = np.append(s1, alignment.split(' '))
-                for alignment in a2:
-                    s2 = np.append(s2, alignment.split(' '))
-                s1 = np.array(tokenizer.texts_to_sequences(a1))
-                s2 = np.array(tokenizer.texts_to_sequences(a2))
-                s1 = np.reshape(s1, (a1.shape[0], -1))
-                s2 = np.reshape(s2, (a2.shape[0], -1))
-                y1 = np.array(np.hsplit(align_y, 2)[0].T[0])
-                y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
-                align_y = 1*np.equal(y1, y2)
-                #align_y = np_utils.to_categorical(align_y, num_classes=2)
-                yield [s1, s2], align_y, score/float(max_length)
-
-
-def get_test_alignment(x, seq_i, seq_j, tokenizer):
-   # w2v = gensim.models.KeyedVectors.load_word2vec_format('./alignment_vec.txt', binary=False)
-    alignment = pairwise2.align.globalxx(x[seq_i], x[seq_j], one_alignment_only=True)[0]
-    align_x = np.array(list(alignment)[0:2])
-    s1 = align_x[0]
-    s2 = align_x[1]
-    s1 = [' '.join([s1[i:i + word_length] for i in range(0, len(s1))]).replace('-','x')]
-    s2 = [' '.join([s2[i:i + word_length] for i in range(0, len(s2))]).replace('-', 'x')]
-    s1 = np.array(tokenizer.texts_to_sequences(s1))
-    s2 = np.array(tokenizer.texts_to_sequences(s2))
-    return [s1, s2]
-
+            x_seq = split_sequence(x[i:i + batch_size], word_length)
+            x_batch = np.array(tokenizer.texts_to_sequences(x_seq))
+            x_batch = np.reshape(x_batch, (x_seq.shape[0], -1))
+            y_batch = np_utils.to_categorical(y, num_classes=num_classes)
+            yield x_batch, y_batch[i:i + batch_size], class_labels
 
 
 
 tokenizer = Tokenizer()
-vocab = get_vocab('atcgx')
+vocab = get_vocab('atcg')
 tokenizer.fit_on_texts(vocab)
 # Run predictions
 if True:
@@ -162,24 +137,28 @@ if True:
         # all_text += raw_text
         all_titles.append(obj_title)
         y_preds = model.predict(X_pred)
-        #print(y_preds.T[0])
+        #print(y_preds)
         #print(y_true)
         offset = num_predded
-        num_predded += X_pred[0].shape[0]
-
-        pred_res[offset:offset + y_preds.shape[0], :] = np.argmax(y_preds.T[0], axis=0)
-        act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=0)
+        #print('offset', offset)
+        num_predded += X_pred.shape[0]
+        try:
+            pred_res[offset:offset + y_preds.shape[0], :] = y_preds
+            act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=1)
+        except:
+            print('ooh fuk')
+            break
         print(len(all_titles))
         if len(all_titles) == max_to_pred:
             break
 
 all_titles = np.array(all_titles)
 
-conv_embds = model.layers[2].get_weights()[0]
+conv_embds = model.layers[1].get_weights()[0]
 print(conv_embds)
 
 
-def plot_words(data, perplexity):
+def plot_words(data, actual, perplexity):
     center_points = np.zeros([num_classes, 2])
 
     color_map_name = 'tab20'
@@ -188,24 +167,39 @@ def plot_words(data, perplexity):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     for cc in range(num_classes):
+        keep_points = np.where(plot_act_res == cc)[0]
+        cur_plot = data[keep_points, :]
+        point_labels = list(np.zeros_like(keep_points, dtype=str))
+        point_labels[-1] = '%s_tSNE' % cc
         # Plot each class using a different color
         print('CC', cc)
-        if cc == 1:
-            cfloat = 1.0
-        else:
-            cfloat = -1.0
         #keep_points = np.where(plot_act_res == cc)[0]
-        cur_plot = data#[start:stop:step]
+        #cur_plot = data#[start:stop:step]
 
-        cur_color = cmap(cfloat)
         # Label the final point, that's the Probability=1 point
         peak_label = '%s_tSNE' % cc
 
         # Scatter plot
-        if cc == 1:
-            ax.scatter(data[:, 0], data[:, 1], data[:, 2], c='g', marker='^', alpha=0.3)
-        else:
-            ax.scatter(data[:, 0], data[:, 1], data[:, 2], c='r', marker='o', alpha=0.3)
+        if cc == 0:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='g', marker='^', alpha=0.3)
+        elif cc == 1:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='r', marker='o', alpha=0.3)
+        elif cc == 2:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='b', marker='*', alpha=0.3)
+        elif cc == 3:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='c', marker='v', alpha=0.3)
+        elif cc == 4:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='m', marker='+', alpha=0.3)
+        elif cc == 5:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='y', marker='x', alpha=0.3)
+        elif cc == 6:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#00ff00', marker='D', alpha=0.3)
+        elif cc == 7:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#ff9900', marker='2', alpha=0.3)
+        elif cc == 8:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#6600cc', marker='P', alpha=0.3)
+        elif cc == 9:
+            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#ff99ff', marker='X', alpha=0.3)
 
 
     plt.title('tSNE Visualization. Perplexity %d' % perplexity)
@@ -226,7 +220,7 @@ for perplexity in perplexity_list:
                           #metric='correlation',
                           #verbose=1).fit_transform(plot_data_points)
     print('Running viz')
-    plot_words(embedding, perplexity)
+    plot_words(embedding, plot_act_res, perplexity)
 
 '''
 layer_outputs = [layer.output for layer in model.layers[2:]]

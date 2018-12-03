@@ -20,7 +20,7 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.01
+learning_rate = 0.001
 num_features = 372
 word_length = 6
 vec_length = 4
@@ -29,7 +29,7 @@ nb_epoch = 16
 hidden_size = 25
 sequences_per_family = 10
 num_sequences = 10
-steps_per_epoch = 10
+steps_per_epoch = 4
 num_classes = 20
 num_filters = [16, 4]
 
@@ -60,7 +60,7 @@ def generate_batch(x, y, tokenizer):
                 y2 = np.array(np.hsplit(align_y, 2)[1].T[0])
                 align_y = 1*np.equal(y1, y2)
                 #align_y = np_utils.to_categorical(align_y, num_classes=2)
-                yield [s1, s2, score/float(max_length)], align_y
+                yield [s1, s2], align_y
 
 
 # load data
@@ -118,11 +118,11 @@ output = Conv1D(128, word_length, activation='relu')(decoder)
 output = MaxPooling1D(20)(output)
 '''
 
-output = GlobalMaxPooling1D()(decoder)
+output = Bidirectional(LSTM(hidden_size))(decoder)
 bias = concatenate([output, score], axis=1)
 #output = Dense(32, activation='relu')(bias)
 output = Dense(1, activation='sigmoid')(output)
-model = Model(inputs=[encoder_a, encoder_b, score],
+model = Model(inputs=[encoder_a, encoder_b],
               outputs=output)
 
 adam = Adam(lr=learning_rate)

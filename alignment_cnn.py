@@ -20,14 +20,14 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.0005
+learning_rate = 0.005
 num_features = 372
-word_length = 9
+word_length = 8
 vec_length = 4
-batch_size = 8
+batch_size = 256
 nb_epoch = 16
-hidden_size = 50
-sequences_per_family = 10
+hidden_size = 100
+sequences_per_family = 10000
 num_sequences = 10
 steps_per_epoch = 10
 num_classes = 10
@@ -44,14 +44,14 @@ def split_sequence(x, word_length):
 def generate_batch(x, y, tokenizer):
     indices = np.arange(0, len(x) - 1 - batch_size)
     while True:
-        if len(indices) == 0:
-            indices = np.arange(0, len(x) - 1 - batch_size)
-        i = np.random.choice(indices, 1, replace=False)[0]
-        x_seq = split_sequence(x[i:i + batch_size], word_length)
-        x_batch = np.array(tokenizer.texts_to_sequences(x_seq))
-        x_batch = np.reshape(x_batch, (x_seq.shape[0], -1))
-        y_batch = np_utils.to_categorical(y, num_classes=num_classes)
-        yield x_batch, y_batch[i:i + batch_size]
+        for i in range(len(x) - batch_size):
+            if len(indices) == 0:
+                indices = np.arange(0, len(x) - 1 - batch_size)
+            x_seq = split_sequence(x[i:i + batch_size], word_length)
+            x_batch = np.array(tokenizer.texts_to_sequences(x_seq))
+            x_batch = np.reshape(x_batch, (x_seq.shape[0], -1))
+            y_batch = np_utils.to_categorical(y, num_classes=num_classes)
+            yield x_batch, y_batch[i:i + batch_size]
 
 
 # load data
@@ -85,22 +85,24 @@ x_train, x_valid, y_train, y_valid = train_test_split(x_shuffle,
 
 print('x shape:', x_train.shape)
 tokenizer = Tokenizer()
-tokenizer.fit_on_texts(get_vocab('atcgx', word_length))
+tokenizer.fit_on_texts(get_vocab('atcg', word_length))
 V = len(tokenizer.word_index) + 1
 print('Num Words:', V)
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder = Input(shape=(None,))
 embedding = Embedding(V, hidden_size)(encoder)
-drop = Dropout(0.5)(embedding)
 
-conv_1 = Conv1D(128, word_length)(drop)
-conv_2 = Conv1D(256, 3)(conv_1)
-pool_2 = MaxPooling1D(20)(conv_2)
-output = Bidirectional(LSTM(100))(pool_2)
-output = Dense(2048, activation='relu')(output)
-output = Dense(1024, activation='relu')(output)
-output = Dense(512, activation='relu')(output)
+#output = Bidirectional(LSTM(hidden_size))(embedding)
+output = Dropout(0.5)(embedding)
+output = Conv1D(256, word_length, activation='relu') (output)
+output = MaxPooling1D(5)(output)
+output = Conv1D(128, word_length, activation='relu') (output)
+output = MaxPooling1D(5)(output)
+output = Conv1D(64, 3, activation='relu') (embedding)
+output = MaxPooling1D(20)(output)
+output = Dense(128, activation='relu')(output)
+output = GlobalMaxPooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)
@@ -109,7 +111,7 @@ adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
 model.compile(loss='categorical_crossentropy',
               optimizer=sgd,
-              metrics=['acc'])
+              metrics=['categorical_accuracy'])
 print('Training shapes:', x_train.shape, y_train.shape)
 print('Valid shapes:', x_valid.shape, y_valid.shape)
 print(model.summary())
@@ -117,7 +119,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=100 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=50 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
@@ -130,8 +132,8 @@ with open('model_architecture.json', 'w') as f:
 
 print(history.history.keys())
 # summarize history for accuracy
-plt.plot(history.history['acc'])
-plt.plot(history.history['val_acc'])
+plt.plot(history.history['categorical_accuracy'])
+plt.plot(history.history['val_categorical_accuracy'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
