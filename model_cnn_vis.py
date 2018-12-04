@@ -17,7 +17,7 @@ from keras.utils import np_utils
 from sklearn.manifold import TSNE
 #from MulticoreTSNE import MulticoreTSNE as TSNE
 
-word_length = 6
+word_length = 4
 vec_length = 4
 num_classes = 10
 batch_size = 64
@@ -125,7 +125,7 @@ vocab = get_vocab('atcg')
 tokenizer.fit_on_texts(vocab)
 # Run predictions
 if True:
-    max_to_pred = 1000
+    max_to_pred = 5000
     pred_res = np.zeros([max_to_pred, num_classes])
     act_res = np.zeros(max_to_pred)
     all_text = []
@@ -137,10 +137,7 @@ if True:
         # all_text += raw_text
         all_titles.append(obj_title)
         y_preds = model.predict(X_pred)
-        #print(y_preds)
-        #print(y_true)
         offset = num_predded
-        #print('offset', offset)
         num_predded += X_pred.shape[0]
         try:
             pred_res[offset:offset + y_preds.shape[0], :] = y_preds
@@ -159,11 +156,6 @@ print(conv_embds)
 
 
 def plot_words(data, actual, perplexity):
-    center_points = np.zeros([num_classes, 2])
-
-    color_map_name = 'tab20'
-    cmap = plt.get_cmap(color_map_name)
-
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     for cc in range(num_classes):
@@ -173,34 +165,48 @@ def plot_words(data, actual, perplexity):
         point_labels[-1] = '%s_tSNE' % cc
         # Plot each class using a different color
         print('CC', cc)
-        #keep_points = np.where(plot_act_res == cc)[0]
-        #cur_plot = data#[start:stop:step]
-
-        # Label the final point, that's the Probability=1 point
-        peak_label = '%s_tSNE' % cc
 
         # Scatter plot
         if cc == 0:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='g', marker='^', alpha=0.3)
+            color = 'g'
+            marker = '^'
         elif cc == 1:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='r', marker='o', alpha=0.3)
+            color = 'r'
+            marker = 'o'
         elif cc == 2:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='b', marker='*', alpha=0.3)
+            color = 'b'
+            marker = '*'
         elif cc == 3:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='c', marker='v', alpha=0.3)
+            color = 'c'
+            marker = 'v'
         elif cc == 4:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='m', marker='+', alpha=0.3)
+            color = 'm'
+            marker = '+'
         elif cc == 5:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='y', marker='x', alpha=0.3)
+            color = 'y'
+            marker = 'x'
         elif cc == 6:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#00ff00', marker='D', alpha=0.3)
+            color = '#00ff00'
+            marker = 'D'
         elif cc == 7:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#ff9900', marker='2', alpha=0.3)
+            color = '#ff9900'
+            marker = '2'
         elif cc == 8:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#6600cc', marker='P', alpha=0.3)
+            color = '#6600cc'
+            marker = 'p'
         elif cc == 9:
-            ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c='#ff99ff', marker='X', alpha=0.3)
+            color = '#ff99ff'
+            marker = 'X'
 
+        ax.scatter(cur_plot[:, 0], cur_plot[:, 1], cur_plot[:, 2], c=color, marker=marker, alpha=0.3)
+
+        # Plot the median of the points
+        avg_label = class_labels[cc]
+        low_dim_centers = np.median(cur_plot, axis=0)
+        print(low_dim_centers)
+        print(low_dim_centers.shape)
+        ax.scatter(low_dim_centers[0], low_dim_centers[1], low_dim_centers[2], c=color, marker=marker, alpha=1.0, label=avg_label)
+        ax.text(low_dim_centers[0], low_dim_centers[1], low_dim_centers[2], avg_label)
 
     plt.title('tSNE Visualization. Perplexity %d' % perplexity)
     plt.legend(loc='lower right', numpoints=1, fontsize=6, framealpha=0.5)
@@ -211,7 +217,7 @@ print('Fitting weights')
 # Add class centers. Have to do this before the tSNE transformation
 plot_data_points = np.concatenate([pred_res, np.identity(num_classes)], axis=0)
 plot_act_res = np.concatenate([act_res, np.arange(num_classes)])
-perplexity_list = [5, 30, 60, 250, 500]
+perplexity_list = [30, 60, 250, 500]
 
 for perplexity in perplexity_list:
     embedding = TSNE(perplexity=perplexity, n_components=3, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)

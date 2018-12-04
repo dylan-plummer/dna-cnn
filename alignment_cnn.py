@@ -20,14 +20,14 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.005
+learning_rate = 0.01
 num_features = 372
-word_length = 8
+word_length = 6
 vec_length = 4
-batch_size = 256
+batch_size = 512
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = 10000
+sequences_per_family = 1000
 num_sequences = 10
 steps_per_epoch = 10
 num_classes = 10
@@ -42,11 +42,8 @@ def split_sequence(x, word_length):
 
 
 def generate_batch(x, y, tokenizer):
-    indices = np.arange(0, len(x) - 1 - batch_size)
     while True:
-        for i in range(len(x) - batch_size):
-            if len(indices) == 0:
-                indices = np.arange(0, len(x) - 1 - batch_size)
+        for i in range(len(x) - batch_size - 1):
             x_seq = split_sequence(x[i:i + batch_size], word_length)
             x_batch = np.array(tokenizer.texts_to_sequences(x_seq))
             x_batch = np.reshape(x_batch, (x_seq.shape[0], -1))
@@ -95,14 +92,15 @@ embedding = Embedding(V, hidden_size)(encoder)
 
 #output = Bidirectional(LSTM(hidden_size))(embedding)
 output = Dropout(0.5)(embedding)
-output = Conv1D(256, word_length, activation='relu') (output)
+output = Conv1D(256, 8, activation='relu') (output)
 output = MaxPooling1D(5)(output)
 output = Conv1D(128, word_length, activation='relu') (output)
 output = MaxPooling1D(5)(output)
 output = Conv1D(64, 3, activation='relu') (embedding)
 output = MaxPooling1D(20)(output)
+output = LSTM(hidden_size)(output)
 output = Dense(128, activation='relu')(output)
-output = GlobalMaxPooling1D()(output)
+#output = GlobalMaxPooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)
@@ -119,7 +117,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=50 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
