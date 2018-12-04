@@ -1,6 +1,8 @@
 from itertools import product
 
+import math
 import numpy as np
+from scipy import stats
 import gensim
 from Bio import pairwise2
 import os
@@ -17,10 +19,10 @@ from keras.utils import np_utils
 from sklearn.manifold import TSNE
 #from MulticoreTSNE import MulticoreTSNE as TSNE
 
-word_length = 4
+word_length = 6
 vec_length = 4
 num_classes = 10
-batch_size = 64
+batch_size = 512
 sequences_per_family = 1000
 
 # load data
@@ -46,6 +48,7 @@ y_rt = np.concatenate((y0, y1, y2, y3, y4, y5, y6, y7, y8, y9))
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
 
+
 def get_vocab(chars):
     vocab = {}
     i = 0
@@ -57,33 +60,6 @@ def get_vocab(chars):
         vocab[word] = i
         i += 1
     return vocab
-
-
-def plot_with_labels(low_dim_embs, labels, filename=None, text_alpha=0.8, **plot_kwargs):
-    assert low_dim_embs.shape[0] >= len(labels), "More labels than embeddings"
-    # plt.figure()  #in inches
-
-    xx, yy = low_dim_embs[:, 0], low_dim_embs[:, 1]
-    plt.scatter(xx, yy, **plot_kwargs)
-    for ii, label in enumerate(labels):
-        x, y = xx[ii], yy[ii]
-        try:
-            plt.annotate(label,
-                         xy=(x, y),
-                         xytext=(5, 2),
-                         size='small',
-                         alpha=text_alpha,
-                         textcoords='offset points',
-                         ha='right',
-                         va='bottom')
-        except Exception as ex:
-            pass
-            # raise ex
-
-    if filename is not None:
-        plt.title(filename.split('.')[0])
-        plt.savefig(filename)
-
 
 
 print('Test alignment:')
@@ -101,6 +77,7 @@ with open('model_architecture.json', 'r') as f:
 
 # Load weights into the new model
 model.load_weights('model_weights.h5')
+
 
 def split_sequence(x, word_length):
     split_seq = np.array([])
@@ -123,39 +100,20 @@ def generate_batch(x, y, tokenizer):
 tokenizer = Tokenizer()
 vocab = get_vocab('atcg')
 tokenizer.fit_on_texts(vocab)
-# Run predictions
-if True:
-    max_to_pred = 5000
-    pred_res = np.zeros([max_to_pred, num_classes])
-    act_res = np.zeros(max_to_pred)
-    all_text = []
-    all_titles = []
-    pred_generator = generate_batch(x_train, y_train, tokenizer)
-    num_predded = 0
-    for pred_inputs in pred_generator:
-        X_pred, y_true, obj_title = pred_inputs
-        # all_text += raw_text
-        all_titles.append(obj_title)
-        y_preds = model.predict(X_pred)
-        offset = num_predded
-        num_predded += X_pred.shape[0]
-        try:
-            pred_res[offset:offset + y_preds.shape[0], :] = y_preds
-            act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=1)
-        except:
-            print('ooh fuk')
-            break
-        print(len(all_titles))
-        if len(all_titles) == max_to_pred:
-            break
+V = len(tokenizer.word_index) + 1
 
-all_titles = np.array(all_titles)
-
-conv_embds = model.layers[1].get_weights()[0]
-print(conv_embds)
+# Creating a reverse dictionary
+reverse_word_map = dict(map(reversed, tokenizer.word_index.items()))
 
 
-def plot_words(data, actual, perplexity):
+# Function takes a tokenized sentence and returns the words
+def sequence_to_text(list_of_indices):
+    # Looking up words in dictionary
+    words = [reverse_word_map.get(letter) for letter in list(list_of_indices)]
+    return(words)
+
+
+def plot_words(data, plot_act_res, perplexity):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     for cc in range(num_classes):
@@ -213,39 +171,111 @@ def plot_words(data, actual, perplexity):
     plt.show()
 
 
-print('Fitting weights')
-# Add class centers. Have to do this before the tSNE transformation
-plot_data_points = np.concatenate([pred_res, np.identity(num_classes)], axis=0)
-plot_act_res = np.concatenate([act_res, np.arange(num_classes)])
-perplexity_list = [30, 60, 250, 500]
+def plot_embedding_layer():
+    max_to_pred = 100
+    pred_res = np.zeros([max_to_pred, num_classes])
+    act_res = np.zeros(max_to_pred)
+    all_text = []
+    all_titles = []
+    pred_generator = generate_batch(x_train, y_train, tokenizer)
+    num_predded = 0
+    for pred_inputs in pred_generator:
+        X_pred, y_true, obj_title = pred_inputs
+        # all_text += raw_text
+        all_titles.append(obj_title)
+        y_preds = model.predict(X_pred)
+        offset = num_predded
+        num_predded += X_pred.shape[0]
+        try:
+            pred_res[offset:offset + y_preds.shape[0], :] = y_preds
+            act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=1)
+        except:
+            print('ooh fuk')
+            break
+        print(len(all_titles))
+        if len(all_titles) == max_to_pred:
+            break
+    all_titles = np.array(all_titles)
 
-for perplexity in perplexity_list:
-    embedding = TSNE(perplexity=perplexity, n_components=3, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)
-    #embedding = umap.UMAP(n_neighbors=2,
-                          #min_dist=0.1,
-                          #metric='correlation',
-                          #verbose=1).fit_transform(plot_data_points)
-    print('Running viz')
-    plot_words(embedding, plot_act_res, perplexity)
+    print('Fitting weights')
+    # Add class centers. Have to do this before the tSNE transformation
+    plot_data_points = np.concatenate([pred_res, np.identity(num_classes)], axis=0)
+    plot_act_res = np.concatenate([act_res, np.arange(num_classes)])
+    perplexity_list = [30]#, 60, 250, 500]
 
-'''
-layer_outputs = [layer.output for layer in model.layers[2:]]
-print(layer_outputs)
-for layer in layer_outputs:
-    print(layer)
-activation_model = Model(inputs=model.input, outputs=layer_outputs)
-activations = activation_model.predict(get_test_alignment(x_valid, 0, 1, tokenizer))
-#print(activations)
-seq1 = np.argmax(activations[-3])
-seq2 = np.argmax(activations[-2])
-prediction = activations[-1]
-print(seq1, seq2, prediction)
-activation_1 = activations[10]
-#print(activation_1)
-for kernel in activation_1[0]:
-    words = np.reshape(kernel, (-1, word_length))
-    print('Learned alignment motifs:')
-    print(np.array(tokenizer.sequences_to_texts(np.round(words))))
+    for perplexity in perplexity_list:
+        embedding = TSNE(perplexity=perplexity, n_components=3, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)
+        #embedding = umap.UMAP(n_neighbors=2,
+                              #min_dist=0.1,
+                              #metric='correlation',
+                              #verbose=1).fit_transform(plot_data_points)
+        print('Running viz')
+        plot_words(embedding, plot_act_res, perplexity)
 
-    #print(w2v.similar_by_vector(words[0], topn=1)[0])
-    '''
+
+def plot_activations(units):
+    filters = units.shape[0]
+    activations = np.mean(units, axis=0).T
+    #activations = units[0, :].T
+    print(activations.shape)
+    #for i in range(1, filters):
+    #    activations = np.hstack((activations, units[i, :].T))
+    plt.imshow(activations, interpolation="nearest", cmap="gray")
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_conv_layer():
+    layer_outputs = [layer.output for layer in model.layers[2:]]
+    print(layer_outputs)
+    for layer in layer_outputs:
+        print(layer)
+    activation_model = Model(inputs=model.input, outputs=layer_outputs)
+    max_to_pred = 1000
+    pred_res = np.zeros([max_to_pred, num_classes])
+    act_res = np.zeros(max_to_pred)
+    all_text = []
+    all_titles = []
+    x = np.array([seq.replace(' ', '') for seq in x8])
+    y = np.array(list(y8))
+    pred_generator = generate_batch(x, y, tokenizer)
+    num_predded = 0
+    for pred_inputs in pred_generator:
+        X_pred, y_true, obj_title = pred_inputs
+        # all_text += raw_tex
+        y_preds = activation_model.predict(X_pred)[2]
+        seqs = np.uint32(y_preds * V)
+        print(seqs.shape)
+        plot_activations(seqs)
+        #mode = stats.mode(seqs)
+        motif = np.amax(seqs, axis=0)
+        letters = sequence_to_text(np.amax(motif, axis=0))
+        print(letters)
+        print('Motif:', mode)
+        offset = num_predded
+        num_predded += X_pred.shape[0]
+        try:
+            pred_res[offset:offset + y_preds.shape[0], :] = y_preds
+            act_res[offset:offset + y_true.shape[0]] = np.argmax(y_true, axis=1)
+        except:
+            print('ooh fuk')
+            break
+        if num_predded == max_to_pred:
+            break
+
+    print(pred_res)
+    plot_data_points = np.concatenate([pred_res, np.identity(num_classes)], axis=0)
+    plot_act_res = np.concatenate([act_res, np.arange(num_classes)])
+    perplexity_list = [30, 60, 250, 500]
+
+    for perplexity in perplexity_list:
+        embedding = TSNE(perplexity=perplexity, n_components=3, init='random', n_iter=5000, random_state=2157, verbose=1).fit_transform(plot_data_points)
+        #embedding = umap.UMAP(n_neighbors=2,
+                              #min_dist=0.1,
+                              #metric='correlation',
+                              #verbose=1).fit_transform(plot_data_points)
+        print('Running viz')
+        plot_words(embedding, plot_act_res, perplexity)
+
+
+plot_conv_layer()

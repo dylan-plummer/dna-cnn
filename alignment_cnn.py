@@ -27,7 +27,8 @@ vec_length = 4
 batch_size = 512
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = 1000
+sequences_per_family = 5
+000
 num_sequences = 10
 steps_per_epoch = 10
 num_classes = 10
@@ -91,16 +92,13 @@ encoder = Input(shape=(None,))
 embedding = Embedding(V, hidden_size)(encoder)
 
 #output = Bidirectional(LSTM(hidden_size))(embedding)
-output = Dropout(0.5)(embedding)
-output = Conv1D(256, 8, activation='relu') (output)
+#output = Dropout(0.5)(embedding)
+output = Conv1D(32, word_length, activation='relu') (embedding)
 output = MaxPooling1D(5)(output)
-output = Conv1D(128, word_length, activation='relu') (output)
-output = MaxPooling1D(5)(output)
-output = Conv1D(64, 3, activation='relu') (embedding)
+output = Conv1D(64, 3, activation='relu') (output)
 output = MaxPooling1D(20)(output)
-output = LSTM(hidden_size)(output)
 output = Dense(128, activation='relu')(output)
-#output = GlobalMaxPooling1D()(output)
+output = GlobalMaxPooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)
@@ -117,7 +115,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=50 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_batch(x_valid, y_valid, tokenizer),
                               validation_steps=steps_per_epoch)
 # Save the weights
