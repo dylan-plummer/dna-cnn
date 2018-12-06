@@ -20,14 +20,14 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.01
+learning_rate = 0.001
 num_features = 372
 word_length = 10
 vec_length = 4
-batch_size = 128
+batch_size = 256
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = -1
+sequences_per_family = 1000
 num_sequences = 10
 steps_per_epoch = 4
 num_classes = 10
@@ -127,6 +127,7 @@ output = Conv1D(128, word_length, activation='relu') (encoder)
 output = MaxPooling1D(5)(output)
 output = Conv1D(256, 3, activation='relu') (output)
 output = MaxPooling1D(20)(output)
+output = Dense(512, activation='relu')(output)
 output = GlobalMaxPooling1D()(output)
 #output = Bidirectional(LSTM(hidden_size))(embedding)
 output = Dense(num_classes, activation='softmax')(output)
@@ -136,7 +137,7 @@ model = Model(inputs=encoder,
 adam = Adam(lr=learning_rate)
 sgd = SGD(lr=learning_rate, nesterov=True, decay=1e-6, momentum=0.9)
 model.compile(loss='categorical_crossentropy',
-              optimizer=sgd,
+              optimizer=adam,
               metrics=['categorical_accuracy'])
 print('Training shapes:', x_train.shape, y_train.shape)
 print('Valid shapes:', x_valid.shape, y_valid.shape)

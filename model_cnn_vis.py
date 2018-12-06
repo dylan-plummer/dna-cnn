@@ -2,9 +2,8 @@ from itertools import product
 
 import math
 import numpy as np
-from scipy import stats
-import gensim
 from Bio import pairwise2
+import draw_logo
 import os
 
 from keras_preprocessing.text import Tokenizer
@@ -249,14 +248,23 @@ def plot_embedding_layer():
 
 
 def plot_activations(units):
-    filters = units.shape[0]
-    activations = np.mean(units, axis=0).T
-    #activations = units[0, :].T
-    print(activations.shape)
-    #for i in range(1, filters):
-    #    activations = np.hstack((activations, units[i, :].T))
-    plt.imshow(activations, interpolation="nearest", cmap="gray")
-    plt.tight_layout()
+    r = 8
+    c = 16
+    plot_i = 0
+    fig, axes = plt.subplots(r, c)
+    for kernel in units:
+        print(plot_i)
+        i = plot_i // c
+        j = plot_i % c
+        L = draw_logo.logo(np.abs(kernel), name="P53")
+        L.draw(ax=axes[i][j])
+        axes[i][j].set_xlabel('')
+        axes[i][j].set_ylabel('')
+        axes[i][j].set_title('')
+        #axes[i][j].imshow(kernel.T, interpolation="nearest", cmap="gray")
+        #plt.imshow(kernel.T, interpolation="nearest", cmap="gray")
+        plot_i += 1
+    #plt.tight_layout()
     plt.show()
 
 
@@ -268,7 +276,7 @@ def plot_conv_layer():
     conv_embds = np.array(model.layers[1].get_weights())
     print(conv_embds.shape)
     weights = conv_embds[0]
-    weights = np.reshape(weights, (32, word_length, 4))
+    weights = np.reshape(weights, (128, word_length, 4))
     print('Found Motifs:')
     for motif in weights:
         print(profile_to_sequence(motif))
