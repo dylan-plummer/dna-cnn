@@ -19,11 +19,11 @@ from keras.utils import np_utils
 from sklearn.manifold import TSNE
 #from MulticoreTSNE import MulticoreTSNE as TSNE
 
-word_length = 6
+word_length = 10
 vec_length = 4
 num_classes = 10
-batch_size = 512
-sequences_per_family = 1000
+batch_size = 128
+sequences_per_family = 100
 
 # load data
 dir = os.getcwd() + '/histone_data/'
@@ -79,11 +79,46 @@ with open('model_architecture.json', 'r') as f:
 model.load_weights('model_weights.h5')
 
 
+def profile_to_sequence(profile):
+    vocab = ['a','t','c','g']
+    sequence = ''
+    for bp in profile:
+        sequence += vocab[int(bp.argmax())]
+    return sequence
+
+
+def sequence_to_profile(seq):
+    profile = []
+    vocab = {'a':0,'t':1,'c':2,'g':3}
+    for letter in seq:
+        nuc = np.zeros(4)
+        nuc[vocab[letter]] = 1
+        profile = np.append(profile, nuc)
+    profile = np.reshape(profile, (len(seq), 4))
+    return profile
+
+
+def sequences_to_profile(x):
+    profile = np.array([])
+    for seq in x:
+        profile = np.append(profile, sequence_to_profile(seq))
+    profile = np.reshape(profile, (x.shape[0], -1, 4))
+    return profile
+
+
 def split_sequence(x, word_length):
     split_seq = np.array([])
     for seq in x:
         split_seq = np.append(split_seq, ' '.join([seq[i:i + word_length] for i in range(0, len(seq))]))
     return split_seq
+
+
+def generate_profile_batch(x, y):
+    while True:
+        for i in range(0, len(x) - batch_size - 1, batch_size):
+            x_batch = sequences_to_profile(x[i:i + batch_size])
+            y_batch = np_utils.to_categorical(y, num_classes=num_classes)
+            yield x_batch , y_batch[i:i + batch_size], class_labels
 
 
 def generate_batch(x, y, tokenizer):
@@ -226,32 +261,39 @@ def plot_activations(units):
 
 
 def plot_conv_layer():
-    layer_outputs = [layer.output for layer in model.layers[2:]]
+    layer_outputs = [layer.output for layer in model.layers[1:]]
     print(layer_outputs)
     for layer in layer_outputs:
         print(layer)
+    conv_embds = np.array(model.layers[1].get_weights())
+    print(conv_embds.shape)
+    weights = conv_embds[0]
+    weights = np.reshape(weights, (32, word_length, 4))
+    print('Found Motifs:')
+    for motif in weights:
+        print(profile_to_sequence(motif))
+    plot_activations(weights)
+
     activation_model = Model(inputs=model.input, outputs=layer_outputs)
     max_to_pred = 1000
     pred_res = np.zeros([max_to_pred, num_classes])
     act_res = np.zeros(max_to_pred)
     all_text = []
     all_titles = []
-    x = np.array([seq.replace(' ', '') for seq in x8])
-    y = np.array(list(y8))
-    pred_generator = generate_batch(x, y, tokenizer)
+    x = np.array([seq.replace(' ', '') for seq in x_train])
+    y = np.array(list(y_train))
+    pred_generator = generate_profile_batch(x, y)
     num_predded = 0
     for pred_inputs in pred_generator:
         X_pred, y_true, obj_title = pred_inputs
         # all_text += raw_tex
-        y_preds = activation_model.predict(X_pred)[2]
-        seqs = np.uint32(y_preds * V)
-        print(seqs.shape)
-        plot_activations(seqs)
-        #mode = stats.mode(seqs)
-        motif = np.amax(seqs, axis=0)
-        letters = sequence_to_text(np.amax(motif, axis=0))
-        print(letters)
-        print('Motif:', mode)
+        y_preds = activation_model.predict(X_pred)[0]
+        #seqs = np.uint32(y_preds)
+        print(y_preds.shape)
+        plot_activations(y_preds)
+
+        print('Motif:', motif)
+        print(profile_to_sequence(motif))
         offset = num_predded
         num_predded += X_pred.shape[0]
         try:

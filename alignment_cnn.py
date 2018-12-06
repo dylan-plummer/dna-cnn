@@ -22,17 +22,35 @@ from Bio import pairwise2
 # Network Parameters
 learning_rate = 0.01
 num_features = 372
-word_length = 6
+word_length = 10
 vec_length = 4
-batch_size = 512
+batch_size = 128
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = 5
-000
+sequences_per_family = -1
 num_sequences = 10
-steps_per_epoch = 10
+steps_per_epoch = 4
 num_classes = 10
 num_filters = [16, 4]
+
+
+def sequence_to_profile(seq):
+    profile = []
+    vocab = {'a':0,'t':1,'c':2,'g':3}
+    for letter in seq:
+        nuc = np.zeros(4)
+        nuc[vocab[letter]] = 1
+        profile = np.append(profile, nuc)
+    profile = np.reshape(profile, (len(seq), 4))
+    return profile
+
+
+def sequences_to_profile(x):
+    profile = np.array([])
+    for seq in x:
+        profile = np.append(profile, sequence_to_profile(seq))
+    profile = np.reshape(profile, (x.shape[0], -1, 4))
+    return profile
 
 
 def split_sequence(x, word_length):
@@ -42,9 +60,21 @@ def split_sequence(x, word_length):
     return split_seq
 
 
+def generate_profile_batch(x, y):
+    while True:
+        for i in range(0, len(x) - batch_size - 1, batch_size):
+            try:
+                x_batch = sequences_to_profile(x[i:i + batch_size])
+                y_batch = np_utils.to_categorical(y, num_classes=num_classes)
+                yield x_batch , y_batch[i:i + batch_size]
+            except ValueError as e:
+                print(e)
+                print('Oh no')
+
+
 def generate_batch(x, y, tokenizer):
     while True:
-        for i in range(len(x) - batch_size - 1):
+        for i in range(0, len(x) - batch_size - 1, batch_size):
             x_seq = split_sequence(x[i:i + batch_size], word_length)
             x_batch = np.array(tokenizer.texts_to_sequences(x_seq))
             x_batch = np.reshape(x_batch, (x_seq.shape[0], -1))
@@ -88,17 +118,17 @@ V = len(tokenizer.word_index) + 1
 print('Num Words:', V)
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
-encoder = Input(shape=(None,))
-embedding = Embedding(V, hidden_size)(encoder)
+encoder = Input(shape=(None, 4))
+#embedding = Embedding(V, hidden_size)(encoder)
 
 #output = Bidirectional(LSTM(hidden_size))(embedding)
 #output = Dropout(0.5)(embedding)
-output = Conv1D(32, word_length, activation='relu') (embedding)
+output = Conv1D(128, word_length, activation='relu') (encoder)
 output = MaxPooling1D(5)(output)
-output = Conv1D(64, 3, activation='relu') (output)
+output = Conv1D(256, 3, activation='relu') (output)
 output = MaxPooling1D(20)(output)
-output = Dense(128, activation='relu')(output)
 output = GlobalMaxPooling1D()(output)
+#output = Bidirectional(LSTM(hidden_size))(embedding)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)
@@ -113,10 +143,10 @@ print('Valid shapes:', x_valid.shape, y_valid.shape)
 print(model.summary())
 #plot_model(model, to_file='model.png', show_shapes=True)
 
-history = model.fit_generator(generate_batch(x_train, y_train, tokenizer),
+history = model.fit_generator(generate_profile_batch(x_train, y_train),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=50 * len(x_train)//batch_size//steps_per_epoch,
-                              validation_data=generate_batch(x_valid, y_valid, tokenizer),
+                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
+                              validation_data=generate_profile_batch(x_valid, y_valid),
                               validation_steps=steps_per_epoch)
 # Save the weights
 model.save_weights('model_weights.h5')
