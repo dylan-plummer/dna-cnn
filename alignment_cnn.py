@@ -16,7 +16,7 @@ from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.01
+learning_rate = 0.001
 num_features = 372
 word_length = 6
 vec_length = 4
@@ -64,8 +64,7 @@ def generate_profile_batch(x, y):
                 y_batch = np_utils.to_categorical(y, num_classes=num_classes)
                 yield x_batch , y_batch[i:i + batch_size]
             except ValueError as e:
-                print(e)
-                print('Oh no')
+                pass
 
 
 def generate_batch(x, y, tokenizer):
@@ -81,7 +80,7 @@ def generate_batch(x, y, tokenizer):
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h4.pos', dir + 'neg/h4.neg')
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -103,12 +102,16 @@ print('Num Words:', V)
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder = Input(shape=(None, 4))
 
-output = Dropout(0.2)(encoder)
-output = Conv1D(128, word_length, activation='relu') (output)
-output = AveragePooling1D(5)(output)
-output = Conv1D(256, 2, activation='relu') (output)
-output = AveragePooling1D(5)(output)
+output = Conv1D(128, word_length) (encoder)
 output = BatchNormalization()(output)
+output = Activation('relu')(output)
+output = Dropout(0.5)(output)
+output = AveragePooling1D(5)(output)
+output = Conv1D(256, 2) (output)
+output = BatchNormalization()(output)
+output = Activation('relu')(output)
+output = Dropout(0.5)(output)
+output = AveragePooling1D(5)(output)
 output = Dense(128, activation='relu')(output)
 output = GlobalAveragePooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
@@ -127,7 +130,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_profile_batch(x_train, y_train),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=20 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=5 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_profile_batch(x_valid, y_valid),
                               validation_steps=steps_per_epoch)
 # Save the weights
