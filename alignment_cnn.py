@@ -9,18 +9,14 @@ from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, GlobalMaxPooling1D, dot, multiply
 from keras.layers import RepeatVector, concatenate, Permute
 from keras.optimizers import SGD, Adam
-from keras.layers.merge import Dot
 from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
-import gensim
-from keras.preprocessing.sequence import skipgrams
 from keras.utils import np_utils, plot_model
 import matplotlib.pyplot as plt
 from Bio import pairwise2
 
 
 # Network Parameters
-learning_rate = 0.001
+learning_rate = 0.01
 num_features = 372
 word_length = 6
 vec_length = 4
@@ -85,7 +81,7 @@ def generate_batch(x, y, tokenizer):
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3k4me3.pos', dir + 'neg/h3k4me3.neg')
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h4.pos', dir + 'neg/h4.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -106,17 +102,15 @@ print('Num Words:', V)
 
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder = Input(shape=(None, 4))
-#embedding = Embedding(V, hidden_size)(encoder)
 
-#output = Bidirectional(LSTM(hidden_size))(embedding)
-output = Dropout(0.5)(encoder)
-output = Conv1D(64, word_length, activation='relu') (output)
-output = MaxPooling1D(5)(output)
-output = Conv1D(128, 3, activation='relu') (output)
-output = MaxPooling1D(5)(output)
+output = Dropout(0.2)(encoder)
+output = Conv1D(128, word_length, activation='relu') (output)
+output = AveragePooling1D(5)(output)
+output = Conv1D(256, 2, activation='relu') (output)
+output = AveragePooling1D(5)(output)
+output = BatchNormalization()(output)
 output = Dense(128, activation='relu')(output)
-output = GlobalMaxPooling1D()(output)
-#output = Bidirectional(LSTM(hidden_size))(embedding)
+output = GlobalAveragePooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)

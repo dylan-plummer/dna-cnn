@@ -25,7 +25,7 @@ dir = os.getcwd() + '/histone_data/'
 
 class_labels = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
 
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3k4me3.pos', dir + 'neg/h3k4me3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -148,11 +148,11 @@ def count_frequencies(motifs, x, y, label):
 
 
 def plot_conv_layer(x, y):
-    layer_outputs = [layer.output for layer in model.layers[1:]]
+    layer_outputs = [layer.output for layer in model.layers]
     print(layer_outputs)
     for layer in layer_outputs:
         print(layer)
-    conv_embds = np.array(model.layers[1].get_weights())
+    conv_embds = np.array(model.layers[2].get_weights())
     weights = conv_embds[0]
     weights = np.reshape(weights, (128, word_length, 4))
     motifs = []
@@ -162,12 +162,12 @@ def plot_conv_layer(x, y):
     positive_features = count_frequencies(motifs, x, y, 1)
     positive_table = pd.DataFrame.from_dict(positive_features, columns=['count'], orient='index')
     print('Most informative positive features:\n')
-    print(positive_table.sort_values('count', ascending=False).head(5))
+    print(positive_table.sort_values('count', ascending=False).head(9))
 
     negative_features = count_frequencies(motifs, x, y, 0)
     negative_table = pd.DataFrame.from_dict(negative_features, columns=['count'], orient='index')
     print('\n\nMost informative negative features:\n')
-    print(negative_table.sort_values('count', ascending=False).head(5))
+    print(negative_table.sort_values('count', ascending=False).head(9))
 
 
 plot_conv_layer(x_valid, y_valid)
