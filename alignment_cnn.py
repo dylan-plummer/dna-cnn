@@ -22,15 +22,15 @@ from Bio import pairwise2
 # Network Parameters
 learning_rate = 0.001
 num_features = 372
-word_length = 10
+word_length = 6
 vec_length = 4
 batch_size = 256
 nb_epoch = 16
 hidden_size = 100
-sequences_per_family = 1000
+sequences_per_family = -1
 num_sequences = 10
-steps_per_epoch = 4
-num_classes = 10
+steps_per_epoch = 10
+num_classes = 2
 num_filters = [16, 4]
 
 
@@ -85,20 +85,7 @@ def generate_batch(x, y, tokenizer):
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x0, y0 = dhrt.load_data_and_labels_pos(dir + 'pos/h3.pos', pos=0, sequences_per_family=sequences_per_family)
-x1, y1 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me1.pos', pos=1, sequences_per_family=sequences_per_family)
-x2, y2 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me2.pos', pos=2, sequences_per_family=sequences_per_family)
-x3, y3 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k4me3.pos', pos=3, sequences_per_family=sequences_per_family)
-x4, y4 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k9ac.pos', pos=4, sequences_per_family=sequences_per_family)
-x5, y5 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k14ac.pos', pos=5, sequences_per_family=sequences_per_family)
-x6, y6 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k36me3.pos', pos=6, sequences_per_family=sequences_per_family)
-x7, y7 = dhrt.load_data_and_labels_pos(dir + 'pos/h3k79me3.pos', pos=7, sequences_per_family=sequences_per_family)
-x8, y8 = dhrt.load_data_and_labels_pos(dir + 'pos/h4.pos', pos=8, sequences_per_family=sequences_per_family)
-x9, y9 = dhrt.load_data_and_labels_pos(dir + 'pos/h4ac.pos', pos=9, sequences_per_family=sequences_per_family)
-
-
-x_rt = np.concatenate((x0, x1, x2, x3, x4, x5, x6, x7, x8, x9))
-y_rt = np.concatenate((y0, y1, y2, y3, y4, y5, y6, y7, y8, y9))
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3k4me3.pos', dir + 'neg/h3k4me3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -122,12 +109,12 @@ encoder = Input(shape=(None, 4))
 #embedding = Embedding(V, hidden_size)(encoder)
 
 #output = Bidirectional(LSTM(hidden_size))(embedding)
-#output = Dropout(0.5)(embedding)
-output = Conv1D(128, word_length, activation='relu') (encoder)
+output = Dropout(0.5)(encoder)
+output = Conv1D(64, word_length, activation='relu') (output)
 output = MaxPooling1D(5)(output)
-output = Conv1D(256, 3, activation='relu') (output)
-output = MaxPooling1D(20)(output)
-output = Dense(512, activation='relu')(output)
+output = Conv1D(128, 3, activation='relu') (output)
+output = MaxPooling1D(5)(output)
+output = Dense(128, activation='relu')(output)
 output = GlobalMaxPooling1D()(output)
 #output = Bidirectional(LSTM(hidden_size))(embedding)
 output = Dense(num_classes, activation='softmax')(output)
@@ -146,7 +133,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_profile_batch(x_train, y_train),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=20 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_profile_batch(x_valid, y_valid),
                               validation_steps=steps_per_epoch)
 # Save the weights
@@ -175,3 +162,9 @@ plt.xlabel('epoch')
 plt.legend(['total_loss', 'total_val_loss'], loc='upper left')
 plt.show()
 
+
+print('Evaluating Model:')
+score = model.evaluate_generator(generate_profile_batch(x_rt, y_rt),
+                         verbose=1,
+                         steps= len(x_rt)//batch_size)
+print("Loss: ", score[0], "Accuracy: ", score[1])
