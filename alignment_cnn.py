@@ -80,7 +80,7 @@ def generate_batch(x, y, tokenizer):
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h4.pos', dir + 'neg/h4.neg')
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -103,18 +103,20 @@ alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder = Input(shape=(None, 4))
 
 output = Conv1D(64, word_length) (encoder)
-#output = BatchNormalization()(output)
+output = BatchNormalization()(output)
 output = Activation('relu')(output)
-output = AveragePooling1D(5)(output)
-output = SpatialDropout1D(0.5)(output)
+output = MaxPooling1D(5)(output)
 #output = AveragePooling1D(5)(output)
 output = Conv1D(128, 2) (output)
+output = BatchNormalization()(output)
 output = Activation('relu')(output)
-output = AveragePooling1D(20)(output)
-output = SpatialDropout1D(0.5)(output)
+output = MaxPooling1D(20)(output)
+#output = GlobalAveragePooling1D()(output)
+#output = SpatialDropout1D(0.5)(output)
 #output = BatchNormalization()(output)
 output = Dense(64, activation='relu')(output)
-output = GlobalAveragePooling1D()(output)
+output = SpatialDropout1D(0.5)(output)
+output = GlobalMaxPooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
               outputs=output)

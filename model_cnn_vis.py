@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
 from keras.utils import np_utils
 
-word_length = 8
+word_length = 10
 vec_length = 4
 num_classes = 2
 batch_size = 128
