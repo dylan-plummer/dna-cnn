@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 from keras.models import model_from_json, Model
 from keras.utils import np_utils
 
-word_length = 6
+word_length = 8
 vec_length = 4
 num_classes = 2
 batch_size = 128
@@ -115,7 +115,7 @@ def generate_batch(x, y, tokenizer):
 
 def plot_activations(units):
     r = 8
-    c = 16
+    c = 8
     plot_i = 0
     fig, axes = plt.subplots(r, c)
     for kernel in units:
@@ -154,9 +154,10 @@ def plot_conv_layer(x, y):
         print(layer)
     conv_embds = np.array(model.layers[1].get_weights())
     weights = conv_embds[0]
-    weights = np.reshape(weights, (128, word_length, 4))
+    weights = np.reshape(weights, (64, word_length, 4))
     motifs = []
     for kernel in weights:
+        kernel[kernel < 0] *= -1
         motifs = np.append(motifs, profile_to_sequence(kernel))
     plot_activations(weights)
     positive_features = count_frequencies(motifs, x, y, 1)

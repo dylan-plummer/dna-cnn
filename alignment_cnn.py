@@ -7,7 +7,7 @@ from sequence_helpers import get_alignments, get_vocab, class_to_onehot, split_a
 from sklearn.model_selection import train_test_split
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Embedding, Flatten, Dropout, Conv1D, MaxPooling1D, AveragePooling1D, LSTM, Bidirectional, BatchNormalization, GlobalAveragePooling1D, Input, Reshape, GlobalMaxPooling1D, dot, multiply
-from keras.layers import RepeatVector, concatenate, Permute
+from keras.layers import RepeatVector, concatenate, Permute, SpatialDropout1D
 from keras.optimizers import SGD, Adam
 from keras.preprocessing.text import Tokenizer
 from keras.utils import np_utils, plot_model
@@ -18,7 +18,7 @@ from Bio import pairwise2
 # Network Parameters
 learning_rate = 0.001
 num_features = 372
-word_length = 6
+word_length = 10
 vec_length = 4
 batch_size = 256
 nb_epoch = 16
@@ -80,7 +80,7 @@ def generate_batch(x, y, tokenizer):
 # load data
 dir = os.getcwd() + '/histone_data/'
 
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
+x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h4.pos', dir + 'neg/h4.neg')
 
 x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
 y_rt = np.array(list(y_rt))
@@ -102,17 +102,18 @@ print('Num Words:', V)
 alignment_batch = batch_size * batch_size - 2 * batch_size + 2
 encoder = Input(shape=(None, 4))
 
-output = Conv1D(128, word_length) (encoder)
-output = BatchNormalization()(output)
+output = Conv1D(64, word_length) (encoder)
+#output = BatchNormalization()(output)
 output = Activation('relu')(output)
-output = Dropout(0.5)(output)
 output = AveragePooling1D(5)(output)
-output = Conv1D(256, 2) (output)
-output = BatchNormalization()(output)
+output = SpatialDropout1D(0.5)(output)
+#output = AveragePooling1D(5)(output)
+output = Conv1D(128, 2) (output)
 output = Activation('relu')(output)
-output = Dropout(0.5)(output)
-output = AveragePooling1D(5)(output)
-output = Dense(128, activation='relu')(output)
+output = AveragePooling1D(20)(output)
+output = SpatialDropout1D(0.5)(output)
+#output = BatchNormalization()(output)
+output = Dense(64, activation='relu')(output)
 output = GlobalAveragePooling1D()(output)
 output = Dense(num_classes, activation='softmax')(output)
 model = Model(inputs=encoder,
@@ -130,7 +131,7 @@ print(model.summary())
 
 history = model.fit_generator(generate_profile_batch(x_train, y_train),
                               steps_per_epoch=steps_per_epoch,
-                              epochs=5 * len(x_train)//batch_size//steps_per_epoch,
+                              epochs=10 * len(x_train)//batch_size//steps_per_epoch,
                               validation_data=generate_profile_batch(x_valid, y_valid),
                               validation_steps=steps_per_epoch)
 # Save the weights
