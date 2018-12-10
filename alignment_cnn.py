@@ -2,6 +2,7 @@ import os
 import time
 import data_helpers as dhrt
 import numpy as np
+import pandas as pd
 
 from sklearn.model_selection import train_test_split
 from keras.models import Model
@@ -81,11 +82,11 @@ def train_model(filename, word_length=10, verbose=False):
 
     encoder = Input(shape=(None, 4))
 
-    output = Conv1D(64, word_length) (encoder)
+    output = Conv1D(128, word_length) (encoder)
     output = BatchNormalization()(output)
     output = Activation('relu')(output)
     output = MaxPooling1D(5)(output)
-    output = Conv1D(128, 2) (output)
+    output = Conv1D(256, 2) (output)
     output = BatchNormalization()(output)
     output = Activation('relu')(output)
     output = MaxPooling1D(20)(output)
@@ -145,14 +146,23 @@ def train_model(filename, word_length=10, verbose=False):
                                      verbose=0,
                                      steps=len(x_rt)//batch_size)
     print("Loss: ", score[0], "Accuracy: ", score[1])
+    return score[0], score[1]
 
 
 datasets = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
 word_lengths = [4, 5, 10, 16, 32]
+performance = {}
 
 for filename in datasets:
+    accuracies = []
     for word_len in word_lengths:
         print('Training model on', filename, 'with word length', word_len)
         start_time = time.time()
-        train_model(filename, word_length=word_len, verbose=False)
+        loss, acc = train_model(filename, word_length=word_len, verbose=False)
+        accuracies.append(acc)
         print('Training took', time.time() - start_time, 'seconds\n')
+    performance[filename] = accuracies
+
+df = pd.DataFrame.from_dict(performance, columns=['k=4', 'k=5', 'k=10', 'k=16', 'k=32'], orient='index')
+print(df)
+df.to_pickle('performance.pkl')
