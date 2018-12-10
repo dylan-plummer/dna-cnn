@@ -1,4 +1,5 @@
 import os
+import time
 import data_helpers as dhrt
 import numpy as np
 
@@ -10,6 +11,9 @@ from keras.optimizers import SGD, Adam
 from keras.utils import np_utils, plot_model
 import matplotlib.pyplot as plt
 
+# reproducible research :)
+np.random.seed(42)
+
 # Disable Tensorflow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -17,7 +21,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Network Parameters
 learning_rate = 0.001
 batch_size = 256
-nb_epoch = 3
+nb_epoch = 15
 steps_per_epoch = 10
 num_classes = 2
 
@@ -86,7 +90,7 @@ def train_model(filename, word_length=10, verbose=False):
     output = Activation('relu')(output)
     output = MaxPooling1D(20)(output)
     output = Dense(64, activation='relu')(output)
-    output = SpatialDropout1D(0.5)(output)
+    output = SpatialDropout1D(0.6)(output)
     output = GlobalMaxPooling1D()(output)
     output = Dense(num_classes, activation='softmax')(output)
     model = Model(inputs=encoder,
@@ -137,7 +141,6 @@ def train_model(filename, word_length=10, verbose=False):
     plt.savefig('models/' + filename + '/' + str(word_length) + '_loss.png')
     plt.clf()
 
-    print('Evaluating Model:')
     score = model.evaluate_generator(generate_profile_batch(x_rt, y_rt),
                                      verbose=0,
                                      steps=len(x_rt)//batch_size)
@@ -145,9 +148,11 @@ def train_model(filename, word_length=10, verbose=False):
 
 
 datasets = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
-word_lengths = [4, 5, 10, 16]
+word_lengths = [4, 5, 10, 16, 32]
 
 for filename in datasets:
     for word_len in word_lengths:
         print('Training model on', filename, 'with word length', word_len)
+        start_time = time.time()
         train_model(filename, word_length=word_len, verbose=False)
+        print('Training took', time.time() - start_time, 'seconds\n')
