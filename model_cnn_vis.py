@@ -20,15 +20,7 @@ num_classes = 2
 batch_size = 128
 sequences_per_family = -1
 
-# load data
-dir = os.getcwd() + '/histone_data/'
-
 class_labels = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
-
-x_rt, y_rt = dhrt.load_data_and_labels(dir + 'pos/h3.pos', dir + 'neg/h3.neg')
-
-x_rt = np.array([seq.replace(' ', '') for seq in x_rt])
-y_rt = np.array(list(y_rt))
 
 
 def get_vocab(chars):
@@ -42,23 +34,6 @@ def get_vocab(chars):
         vocab[word] = i
         i += 1
     return vocab
-
-
-print('Test alignment:')
-print(pairwise2.align.globalxx(x_rt[0], x_rt[1], one_alignment_only=True)[0:2])
-print(y_rt[0], y_rt[1])
-
-x_train, x_valid, y_train, y_valid = train_test_split(x_rt,
-                                                      y_rt,
-                                                      stratify=y_rt,
-                                                      test_size=0.2)
-
-# Model reconstruction from JSON file
-with open('model_architecture.json', 'r') as f:
-    model = model_from_json(f.read())
-
-# Load weights into the new model
-model.load_weights('model_weights.h5')
 
 
 def profile_to_sequence(profile):
@@ -113,25 +88,38 @@ def generate_batch(x, y, tokenizer):
             yield x_batch, y_batch[i:i + batch_size], class_labels
 
 
-def plot_activations(units):
-    r = 8
-    c = 8
+def plot_activations(units, motifs, title):
+    r = 3
+    c = 3
     plot_i = 0
     fig, axes = plt.subplots(r, c)
     for kernel in units:
-        print(plot_i)
-        i = plot_i // c
-        j = plot_i % c
-        kernel[kernel < 0 ] *= -1
-        L = draw_logo.logo(kernel, name="P53")
-        L.draw(ax=axes[i][j])
         motif = profile_to_sequence(kernel)
-        axes[i][j].set_xlabel(motif, fontsize=8)
-        axes[i][j].set_ylabel('')
-        axes[i][j].set_title('')
-        plot_i += 1
+        if motif in motifs and plot_i < r * c:
+            print(plot_i)
+            i = plot_i // c
+            j = plot_i % c
+            kernel[kernel < 0 ] *= -1
+            L = draw_logo.logo(kernel, name="P53")
+            L.draw(ax=axes[i][j])
+            axes[i][j].set_xlabel(motif, fontsize=8)
+            axes[i][j].set_ylabel('')
+            axes[i][j].set_title('')
+            plot_i += 1
     #plt.tight_layout()
+    plt.title(title)
     plt.show()
+
+
+def matches_pattern(s, pattern, threshold):
+    matches = 0
+    for i in range(len(s)):
+        if s[i] == pattern[i]:
+            matches += 1
+    if matches / len(pattern) > threshold:
+        return True
+    else:
+        return False
 
 
 def count_frequencies(motifs, x, y, label):
@@ -141,34 +129,57 @@ def count_frequencies(motifs, x, y, label):
         for i in range(len(x)):  # for every sequence in the dataset
             if y[i] == label:
                 for j in range(len(x[i]) - word_length):  # for every index of the sequence
-                    if x[i][j:j + word_length] == motif:
+                    if matches_pattern(x[i][j:j + word_length], motif, 0.30):
                         count += 1
         frequencies[motif] = count
     return frequencies
 
 
-def plot_conv_layer(x, y):
+def plot_conv_layer(dataset, word_length, kernel_size):
+    # load data
+    data_dir = os.getcwd() + '/histone_data/'
+    x_rt, y_rt = dhrt.load_data_and_labels(data_dir + 'pos/' + dataset + '.pos', data_dir + 'neg/' + dataset + '.neg')
+
+    x = np.array([seq.replace(' ', '') for seq in x_rt])
+    y = np.array(list(y_rt))
+    dir = 'models/' + dataset + '/' + str(word_length)
+    with open(dir + '_model_architecture.json', 'r') as f:
+        model = model_from_json(f.read())
+    # Load weights into the new model
+    model.load_weights(dir + '_model_weights.h5')
     layer_outputs = [layer.output for layer in model.layers]
     print(layer_outputs)
     for layer in layer_outputs:
         print(layer)
     conv_embds = np.array(model.layers[1].get_weights())
     weights = conv_embds[0]
-    weights = np.reshape(weights, (64, word_length, 4))
+    weights = np.reshape(weights, (kernel_size, word_length, 4))
     motifs = []
     for kernel in weights:
         kernel[kernel < 0] *= -1
         motifs = np.append(motifs, profile_to_sequence(kernel))
-    plot_activations(weights)
+
     positive_features = count_frequencies(motifs, x, y, 1)
     positive_table = pd.DataFrame.from_dict(positive_features, columns=['count'], orient='index')
     print('Most informative positive features:\n')
     print(positive_table.sort_values('count', ascending=False).head(9))
+    best_motifs = positive_table.sort_values('count', ascending=False).head(9).index.values
+    print('Best motifs', best_motifs)
+    plot_activations(weights, best_motifs, dataset + ' Motifs')
 
-    negative_features = count_frequencies(motifs, x, y, 0)
-    negative_table = pd.DataFrame.from_dict(negative_features, columns=['count'], orient='index')
-    print('\n\nMost informative negative features:\n')
-    print(negative_table.sort_values('count', ascending=False).head(9))
+    #negative_features = count_frequencies(motifs, x, y, 0)
+    #negative_table = pd.DataFrame.from_dict(negative_features, columns=['count'], orient='index')
+    #print('\n\nMost informative negative features:\n')
+    #print(negative_table.sort_values('count', ascending=False).head(9))
 
 
-plot_conv_layer(x_rt, y_rt)
+plot_conv_layer('h3', 32, 128)
+plot_conv_layer('h3k4me1', 32, 128)
+plot_conv_layer('h3k4me2', 32, 128)
+plot_conv_layer('h3k4me3', 32, 128)
+plot_conv_layer('h3k9ac', 16, 128)
+plot_conv_layer('h3k14ac', 32, 128)
+plot_conv_layer('h3k36me3', 32, 128)
+plot_conv_layer('h3k79me3', 32, 64)
+plot_conv_layer('h4', 32, 128)
+plot_conv_layer('h4ac', 32, 128)

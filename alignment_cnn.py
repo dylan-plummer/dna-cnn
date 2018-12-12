@@ -149,7 +149,7 @@ def train_model(filename, word_length=10, verbose=False):
     return score[0], score[1]
 
 
-datasets = ['h3', 'h3k4me1', 'h3k4me2', 'h3k4me3', 'h3k9ac', 'h3k14ac', 'h3k36me3', 'h3k79me3', 'h4', 'h4ac']
+datasets = ['h3k36me3', 'h3k79me3', 'h4', 'h4ac']
 word_lengths = [4, 5, 10, 16, 32]
 performance = {}
 
