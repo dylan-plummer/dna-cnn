@@ -102,12 +102,11 @@ def plot_activations(units, motifs, title):
             kernel[kernel < 0 ] *= -1
             L = draw_logo.logo(kernel, name="P53")
             L.draw(ax=axes[i][j])
-            axes[i][j].set_xlabel(motif, fontsize=8)
+            axes[i][j].set_xlabel(motif, fontsize=16)
             axes[i][j].set_ylabel('')
             axes[i][j].set_title('')
             plot_i += 1
     #plt.tight_layout()
-    plt.title(title)
     plt.show()
 
 
@@ -180,6 +179,6 @@ plot_conv_layer('h3k4me3', 32, 128)
 plot_conv_layer('h3k9ac', 16, 128)
 plot_conv_layer('h3k14ac', 32, 128)
 plot_conv_layer('h3k36me3', 32, 128)
-plot_conv_layer('h3k79me3', 32, 64)
+plot_conv_layer('h3k79me3', 32, 128)
 plot_conv_layer('h4', 32, 128)
 plot_conv_layer('h4ac', 32, 128)
